@@ -13,13 +13,6 @@ static inline uint32_t snrt_cls_base_addr() {
     return l1_end_addr - cdata_size - cbss_size;
 }
 
-static inline void snrt_crt0_cluster_hw_barrier() {
-    uint32_t register r;
-    uint32_t hw_barrier =
-        SNRT_CLUSTER_HW_BARRIER_ADDR + snrt_cluster_idx() * SNRT_CLUSTER_OFFSET;
-    asm volatile("lw %0, 0(%1)" : "=r"(r) : "r"(hw_barrier) : "memory");
-}
-
 static inline void snrt_init_tls() {
     extern volatile uint32_t __tdata_start, __tdata_end;
     extern volatile uint32_t __tbss_start, __tbss_end;
@@ -130,7 +123,7 @@ void snrt_main() {
 #endif
 
 #ifdef SNRT_CRT0_PRE_BARRIER
-    snrt_crt0_cluster_hw_barrier();
+    snrt_cluster_hw_barrier();
 #endif
 
 #ifdef SNRT_CRT0_CALLBACK5
@@ -147,7 +140,7 @@ void snrt_main() {
 #endif
 
 #ifdef SNRT_CRT0_POST_BARRIER
-    snrt_crt0_cluster_hw_barrier();
+    snrt_cluster_hw_barrier();
 #endif
 
 #ifdef SNRT_CRT0_CALLBACK7
