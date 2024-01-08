@@ -37,7 +37,13 @@ int main() {
     // Copy data in TCDM
     if (snrt_is_dm_core()) {
         snrt_dma_start_1d(local_a, remote_a, size_frac_a);
+#ifdef USE_MULTICAST
+        if (snrt_cluster_idx() == 0)
+            snrt_dma_start_1d_mcast(local_b, remote_b,
+                                    (snrt_cluster_num() - 1) << 18, size_b);
+#else
         snrt_dma_start_1d(local_b, remote_b, size_b);
+#endif
         snrt_dma_start_1d(local_c, remote_c, size_frac_c);
         snrt_dma_wait_all();
     }
