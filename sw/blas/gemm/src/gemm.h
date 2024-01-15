@@ -77,6 +77,7 @@ void gemm_fp64_opt(uint32_t M, uint32_t N, uint32_t K, double* A, uint32_t ldA,
 
     // SSR strides and bounds only have to be configured
     // once in the beginning
+    snrt_mcycle();
     if (setup_SSR) {
         // First matrix is stored in transposed format
         if (ta) {
@@ -117,6 +118,7 @@ void gemm_fp64_opt(uint32_t M, uint32_t N, uint32_t K, double* A, uint32_t ldA,
     snrt_ssr_read(SNRT_SSR_DM0, SNRT_SSR_4D, A);
     snrt_ssr_read(SNRT_SSR_DM1, SNRT_SSR_4D, B);
     snrt_ssr_enable();
+    snrt_mcycle();
 
     for (uint32_t m = 0; m < M; m++) {
         uint32_t n = 0;

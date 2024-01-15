@@ -55,9 +55,9 @@ int main() {
         const uint32_t setup_ssr = 1;
         uint32_t start_cycle = snrt_mcycle();
 
-        volatile uint32_t lda = K;
-        volatile uint32_t ldb = K;
-        volatile uint32_t ldc = N;
+        uint32_t lda = K;
+        uint32_t ldb = N;
+        uint32_t ldc = N;
 
         // Transpose of A unsopported
         if (TA) return -1;
