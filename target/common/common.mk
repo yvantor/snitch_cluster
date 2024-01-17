@@ -231,26 +231,31 @@ endef
 # Traces #
 ##########
 
-DASM_TRACES      = $(shell (ls $(LOGS_DIR)/trace_hart_*.dasm 2>/dev/null))
-TXT_TRACES       = $(shell (echo $(DASM_TRACES) | sed 's/\.dasm/\.txt/g'))
-PERF_DUMPS       = $(shell (echo $(DASM_TRACES) | sed 's/trace_hart/hart/g' | sed 's/.dasm/_perf.json/g'))
-ANNOTATED_TRACES = $(shell (echo $(DASM_TRACES) | sed 's/\.dasm/\.s/g'))
-DIFF_TRACES      = $(shell (echo $(DASM_TRACES) | sed 's/\.dasm/\.diff/g'))
+SNITCH_DASM_TRACES      = $(shell (ls $(LOGS_DIR)/trace_hart_*.dasm 2>/dev/null))
+SNITCH_TXT_TRACES       = $(shell (echo $(SNITCH_DASM_TRACES) | sed 's/\.dasm/\.txt/g'))
+SNITCH_ANNOTATED_TRACES = $(shell (echo $(SNITCH_DASM_TRACES) | sed 's/\.dasm/\.s/g'))
+SNITCH_PERF_DUMPS       = $(shell (echo $(SNITCH_DASM_TRACES) | sed 's/trace_hart/hart/g' | sed 's/.dasm/_perf.json/g'))
 
-GENTRACE_OUTPUTS = $(TXT_TRACES) $(PERF_DUMPS)
-ANNOTATE_OUTPUTS = $(ANNOTATED_TRACES)
-PERF_DUMP        = $(LOGS_DIR)/perf.json
-ROI_DUMP         = $(LOGS_DIR)/roi.json
-TRACE_JSON       = $(LOGS_DIR)/trace.json
+TXT_TRACES       += $(SNITCH_TXT_TRACES)
+ANNOTATED_TRACES += $(SNITCH_ANNOTATED_TRACES)
+PERF_DUMPS       += $(SNITCH_PERF_DUMPS)
+JOINT_PERF_DUMP   = $(LOGS_DIR)/perf.json
+ROI_DUMP          = $(LOGS_DIR)/roi.json
+TRACE_JSON        = $(LOGS_DIR)/trace.json
 
 .PHONY: traces annotate trace-view clean-traces clean-annotate
-traces: $(GENTRACE_OUTPUTS)
-annotate: $(ANNOTATE_OUTPUTS)
+traces: $(TXT_TRACES)
+annotate: $(ANNOTATED_TRACES)
+perf: $(JOINT_PERF_DUMP)
 trace-view: $(TRACE_JSON)
 clean-traces:
-	rm -f $(GENTRACE_OUTPUTS)
+	rm -f $(TRACE_OUTPUTS)
 clean-annotate:
 	rm -f $(ANNOTATE_OUTPUTS)
+clean-perf:
+	rm -f $(PERF_DUMPS) $(JOINT_PERF_DUMP)
+clean-trace-view:
+	rm -f $(TRACE_JSON)
 
 $(addprefix $(LOGS_DIR)/,trace_hart_%.txt hart_%_perf.json): $(LOGS_DIR)/trace_hart_%.dasm $(GENTRACE_PY)
 	$(DASM) < $< | $(PYTHON) $(GENTRACE_PY) --permissive --dma-trace $(LOGS_DIR)/dma_trace_$*.log --dump-hart-perf $(LOGS_DIR)/hart_$*_perf.json --dump-dma-perf $(LOGS_DIR)/dma_$*_perf.json -o $(LOGS_DIR)/trace_hart_$*.txt
@@ -263,11 +268,11 @@ $(LOGS_DIR)/trace_hart_%.s: $(LOGS_DIR)/trace_hart_%.txt ${ANNOTATE_PY}
 $(LOGS_DIR)/trace_hart_%.diff: $(LOGS_DIR)/trace_hart_%.txt ${ANNOTATE_PY}
 	$(PYTHON) ${ANNOTATE_PY} ${ANNOTATE_FLAGS} -o $@ $(BINARY) $< -d
 
-$(PERF_DUMP): $(PERF_DUMPS) $(JOIN_PY)
+$(JOINT_PERF_DUMP): $(PERF_DUMPS) $(JOIN_PY)
 	$(PYTHON) $(JOIN_PY) -i $(shell ls $(LOGS_DIR)/*_perf.json) -o $@
 
-$(ROI_DUMP): $(PERF_DUMP) $(ROI_SPEC) $(ROI_PY)
-	$(PYTHON) $(ROI_PY) $(PERF_DUMP) $(ROI_SPEC) --cfg $(CFG) -o $@
+$(ROI_DUMP): $(JOINT_PERF_DUMP) $(ROI_SPEC) $(ROI_PY)
+	$(PYTHON) $(ROI_PY) $(JOINT_PERF_DUMP) $(ROI_SPEC) --cfg $(CFG) -o $@
 
 $(TRACE_JSON): $(ROI_DUMP) $(VISUALIZE_PY)
-	$(PYTHON) $(VISUALIZE_PY) $(ROI_DUMP) --traces $(TXT_TRACES) --elf $(BINARY) -o $@
+	$(PYTHON) $(VISUALIZE_PY) $(ROI_DUMP) --traces $(SNITCH_TXT_TRACES) --elf $(BINARY) -o $@
