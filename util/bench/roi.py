@@ -42,9 +42,15 @@ def get_roi(data, thread, idx):
     thread_idx = int(thread_idx)
     thread_data = data[thread]
     if thread_type == "hart":
-        return thread_data[idx]
+        try:
+            return thread_data[idx]
+        except IndexError:
+            print(f"Thread {thread} does not contain region {idx}")
     elif thread_type == "dma":
-        return thread_data["transfers"][idx]
+        try:
+            return thread_data["transfers"][idx]
+        except IndexError:
+            print(f"Thread {thread} does not contain region {idx}")
     else:
         raise ValueError(f"Unsupported thread type {thread_type}")
 
