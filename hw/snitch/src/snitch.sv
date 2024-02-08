@@ -55,6 +55,9 @@ module snitch import snitch_pkg::*; import riscv_instr::*; #(
   parameter int unsigned NumDTLBEntries = 0,
   parameter int unsigned NumITLBEntries = 0,
   parameter snitch_pma_pkg::snitch_pma_t SnitchPMACfg = '{default: 0},
+  /// Consistency Address Queue (CAQ) parameters
+  parameter int unsigned CaqDepth    = 0,
+  parameter int unsigned CaqTagWidth = 0,
   /// Enable debug support.
   parameter bit         DebugSupport = 1,
   /// Derived parameter *Do not override*
@@ -103,6 +106,9 @@ module snitch import snitch_pkg::*; import riscv_instr::*; #(
   output fpnew_pkg::roundmode_e     fpu_rnd_mode_o,
   output fpnew_pkg::fmt_mode_t      fpu_fmt_mode_o,
   input  fpnew_pkg::status_t        fpu_status_i,
+  /// Consistency Address Queue (CAQ) interface.
+  /// Used by FPU to notify Snitch LSU of retired loads/stores.
+  input  logic          caq_pvalid_i,
   // Core events for performance counters
   output snitch_pkg::core_events_t  core_events_o,
   // Cluster HW barrier
@@ -146,7 +152,7 @@ module snitch import snitch_pkg::*; import riscv_instr::*; #(
   logic [31:0] alu_result;
 
   logic [RegWidth-1:0] rd, rs1, rs2;
-  logic stall, lsu_stall;
+  logic stall, lsu_stall, caq_stall;
   // Register connections
   logic [1:0][RegWidth-1:0] gpr_raddr;
   logic [1:0][31:0]         gpr_rdata;
@@ -453,6 +459,9 @@ module snitch import snitch_pkg::*; import riscv_instr::*; #(
   assign stall = ~valid_instr
                 // The LSU is stalling.
                 | lsu_stall
+                // The CAQ inside the LSU is stalling;
+                // this prevents a local load/store from overtaking a prior offloaded load/store.
+                | caq_stall
                 // The accelerator port is stalling.
                 | acc_stall
                 // We are waiting on the `fence.i` flush.
@@ -2804,6 +2813,12 @@ module snitch import snitch_pkg::*; import riscv_instr::*; #(
   // sign exten to appropriate length
   assign lsu_qdata = $unsigned(gpr_rdata[1]);
 
+  logic caq_qvalid, caq_qready;
+  // Make request to CAQ on offloading an FPU load or store
+  assign caq_qvalid = acc_qvalid_o & (is_fp_load | is_fp_store);
+  // CAQ stalls core when not ready to take valid request
+  assign caq_stall = caq_qvalid & ~caq_qready;
+
   snitch_lsu #(
     .AddrWidth (AddrWidth),
     .DataWidth (DataWidth),
@@ -2811,7 +2826,10 @@ module snitch import snitch_pkg::*; import riscv_instr::*; #(
     .drsp_t (drsp_t),
     .tag_t (logic[RegWidth-1:0]),
     .NumOutstandingMem (NumIntOutstandingMem),
-    .NumOutstandingLoads (NumIntOutstandingLoads)
+    .NumOutstandingLoads (NumIntOutstandingLoads),
+    .Caq (FP_EN),
+    .CaqDepth (CaqDepth),
+    .CaqTagWidth (CaqTagWidth)
   ) i_snitch_lsu (
     .clk_i (clk_i),
     .rst_i (rst_i),
@@ -2830,6 +2848,11 @@ module snitch import snitch_pkg::*; import riscv_instr::*; #(
     .lsu_pvalid_o (lsu_pvalid),
     .lsu_pready_i (lsu_pready),
     .lsu_empty_o (lsu_empty),
+    .caq_qaddr_i (ls_paddr),
+    .caq_qwrite_i (is_fp_store),
+    .caq_qvalid_i (caq_qvalid),
+    .caq_qready_o (caq_qready),
+    .caq_pvalid_i,
     .data_req_o,
     .data_rsp_i
   );
