@@ -5,7 +5,7 @@
 
 # Define environment variables
 export PYTHON=/usr/local/anaconda3-2022.05/bin/python3
-export BENDER=bender-0.27.1
+export BENDER=bender-0.28.1
 export CC=gcc-9.2.0
 export CXX=g++-9.2.0
 export VCS_SEPP=vcs-2020.12

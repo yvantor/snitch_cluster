@@ -21,7 +21,7 @@ jobs:
       - name: bender install
         uses: pulp-platform/pulp-actions/bender-install@v2
         with:
-          version: 0.27.1
+          version: 0.28.1
       - name: Install Python requirements
         run: pip install -r python-requirements.txt
       - name: Generate runtime documentation
