@@ -23,6 +23,12 @@ the last executed instruction
 
 Performance metrics are appended at the end of the generated trace
 and can optionally be dumped to a separate JSON file.
+
+It also computes various performance metrics for every DMA transfer,
+provided that the Snitch core is equipped with a tightly-coupled DMA
+engine, and the DMA trace logged during simulation
+(see `axi_dma_backend.sv`) is fed to the tool. DMA performance
+metrics are dumped to a separate JSON file.
 """
 
 # TODO: OPER_TYPES and FPU_OPER_TYPES could break: optimization might alter enum mapping
@@ -33,11 +39,12 @@ import re
 import math
 import argparse
 import json
+import ast
 from ctypes import c_int32, c_uint32
 from collections import deque, defaultdict
-import pathlib
 import traceback
 from itertools import tee, islice, chain
+from pathlib import Path
 
 EXTRA_WB_WARN = 'WARNING: {} transactions still in flight for {}.'
 
@@ -333,7 +340,7 @@ def vec_formatter(insn: str, op_type: str, hex_val: int, fmt: int) -> str:
     # file data:
     # instruction,source_width,source_vec_len,destination_width,destination_vec_len
     opcodes_file_name = 'opcodes-flt-occamy_CUSTOM.csv'
-    opcodes_file_path = pathlib.Path(__file__).parent.absolute() / opcodes_file_name
+    opcodes_file_path = Path(__file__).parent.absolute() / opcodes_file_name
     # cut the insn after the first space
     insn = insn.split(' ')[0]
     # check if operand is a source or a destination
@@ -432,6 +439,109 @@ def int_lit(num: int, size: int = 2, force_hex: bool = False) -> str:
 
 def flt_lit(num: int, fmt: int, width: int = 7) -> str:
     return flt_fmt(flt_decode(num, fmt), width)
+
+
+# -------------------- DMA --------------------
+
+
+# We always assume dma_trans contains at least one incomplete placeholder DMA transaction.
+# This incomplete transaction contains default settings. Only upon a DMCPY* instruction
+# is the size of the transaction known, completing the transaction. At that point, a new
+# incomplete transaction is created, inheriting the configuration settings from the previous
+# transaction, which may or may not be overriden before the next DMCPY*.
+def update_dma(insn, extras, dma_trans):
+    # Extract instruction mnemonic from full instruction decoding (includes operand registers)
+    MNEMONIC_REGEX = r'^([\w.]+)\s'
+    match = re.match(MNEMONIC_REGEX, insn)
+    if match:
+        mnemonic = match.group(1)
+        # Process DMA instruction
+        if mnemonic in ['dmsrc', 'dmdst', 'dmstr']:
+            pass
+        elif mnemonic == 'dmrep':
+            dma_trans[-1]['rep'] = extras['opa']
+        elif mnemonic in ['dmcpy', 'dmcpyi']:
+            # Create new placeholder transaction to inherit current DMA settings
+            dma_trans.append(dma_trans[-1].copy())
+            # Set size of the transaction
+            dma_trans[-2]['size'] = extras['opa']
+            # Override repetition count if the transaction is configured to be 1D
+            config = extras['rs2']
+            enable_2d = (config & 2) >> 1
+            if not enable_2d:
+                dma_trans[-2]['rep'] = 1
+
+
+def eval_dma_metrics(dma_trans, dma_trace):
+    dma_trace = Path(dma_trace)
+    if dma_trace.exists():
+        with open(dma_trace, 'r') as f:
+            # Initialize variables
+            compl_transfers = []
+            outst_transfers = []
+            req_transfer_idx = 0
+            req_bytes = 0
+            # Iterate lines in DMA trace
+            for line in f.readlines():
+                dma = ast.literal_eval(line)
+                if 'backend_burst_req_valid' in dma:
+                    # When the first burst in a transfer is granted, we record a new transfer in
+                    # the outstanding transfers queue, with the information obtained from the core
+                    # trace. We record the number of bytes moved by each burst in a transfer, and
+                    # compare the total to the number of bytes moved by the transfer, to count how
+                    # many bursts belong to the current DMA transfer (a number which is difficult
+                    # to pre-compute from the core trace as it depends on address alignments, etc.)
+                    if dma['backend_burst_req_valid'] and dma['backend_burst_req_ready']:
+                        if req_bytes == 0:
+                            n_bytes = dma_trans[req_transfer_idx]['rep'] * \
+                                    dma_trans[req_transfer_idx]['size']
+                            outst_transfers.append({'tstart': dma['time'],
+                                                    'exp_bursts': 0,
+                                                    'rec_bursts': 0,
+                                                    'bytes': n_bytes})
+                        req_bytes += dma['backend_burst_req_num_bytes']
+                        outst_transfers[-1]['exp_bursts'] += 1
+                    # We move on to the next transfer when the bytes requested by the previous
+                    # bursts match the current transfer size.
+                    if req_bytes == outst_transfers[-1]['bytes']:
+                        req_bytes = 0
+                        req_transfer_idx += 1
+                    # Upon a burst completion, we increment the received bursts count. When this
+                    # count matches the expected bursts count of the current transfer we record the
+                    # end time of the transfer and promote the transfer from the outstanding to the
+                    # completed transfers' queue.
+                    if dma['transfer_completed']:
+                        outst_transfers[0]['rec_bursts'] += 1
+                        if outst_transfers[0]['rec_bursts'] == outst_transfers[0]['exp_bursts']:
+                            outst_transfers[0]['tend'] = dma['time']
+                            compl_transfer = outst_transfers.pop(0)
+                            compl_transfer.pop('exp_bursts')
+                            compl_transfer.pop('rec_bursts')
+                            compl_transfers.append(compl_transfer)
+            # Calculate bandwidth of individual transfers
+            for transfer in compl_transfers:
+                transfer['cycles'] = transfer['tend'] - transfer['tstart']
+                transfer['bw'] = transfer['bytes'] / transfer['cycles']
+            # Calculate aggregate bandwidth: total number of bytes transferred while any transfer is
+            # active (accounts for overlaps between transfers).
+            prev_trans_end = 0
+            active_cycles = 0
+            n_bytes = 0
+            for transfer in compl_transfers:
+                # Calculate active cycles, without double-counting overlaps
+                curr_trans_start, curr_trans_end = transfer['tstart'], transfer['tend']
+                if curr_trans_start > prev_trans_end:
+                    active_cycles += curr_trans_end - curr_trans_start
+                else:
+                    active_cycles += curr_trans_end - prev_trans_end
+                prev_trans_end = curr_trans_end
+                # Calculate total number of bytes
+                n_bytes += transfer['bytes']
+            dma_metrics = {}
+            if active_cycles != 0:
+                dma_metrics['aggregate_bw'] = n_bytes / active_cycles
+            dma_metrics['transfers'] = compl_transfers
+            return dma_metrics
 
 
 # -------------------- FPU Sequencer --------------------
@@ -694,7 +804,8 @@ def annotate_insn(
     annot_fseq_offl:
     bool = False,  # Annotate whenever core offloads to CPU on own line
     force_hex_addr: bool = True,
-    permissive: bool = True
+    permissive: bool = True,
+    dma_trans: list = []
 ) -> (str, tuple, bool
       ):  # Return time info, whether trace line contains no info, and fseq_len
     match = re.search(TRACE_IN_REGEX, line.strip('\n'))
@@ -723,6 +834,7 @@ def annotate_insn(
                 insn, pc_str = ('', '')
             else:
                 perf_metrics[-1]['snitch_issues'] += 1
+            update_dma(insn, extras, dma_trans)
         # Annotate sequencer
         elif extras['source'] == TRACE_SRCES['sequencer']:
             if extras['cbuf_push']:
@@ -892,12 +1004,20 @@ def main():
         '--permissive',
         action='store_true',
         help='Ignore some state-related issues when they occur')
-    parser.add_argument('-d',
-                        '--dump-perf',
-                        nargs='?',
-                        metavar='file',
-                        type=argparse.FileType('w'),
-                        help='Dump performance metrics as json text.')
+    parser.add_argument(
+        '--dma-trace',
+        help='Path to a DMA trace file'
+    )
+    parser.add_argument(
+        '--dump-hart-perf',
+        nargs='?',
+        type=argparse.FileType('w'),
+        help='Dump hart performance metrics as json text.'
+    )
+    parser.add_argument(
+        '--dump-dma-perf',
+        help='Dump DMA performance metrics as json text.'
+    )
 
     args = parser.parse_args()
     line_iter = iter(args.infile.readline, b'')
@@ -914,6 +1034,7 @@ def main():
             'cfg_buf': deque(),
             'curr_cfg': None
         }
+        dma_trans = [{'rep': 1}]
         perf_metrics = [
             defaultdict(int)
         ]  # all values initially 0, also 'start' time of measurement 0
@@ -949,10 +1070,18 @@ def main():
         print('\n## Performance metrics', file=file)
         for idx in range(len(perf_metrics)):
             print('\n' + fmt_perf_metrics(perf_metrics, idx, not args.allkeys), file=file)
+        # Emit DMA metrics
+        if args.dma_trace:
+            dma_metrics = eval_dma_metrics(dma_trans, args.dma_trace)
 
-    if args.dump_perf:
-        with args.dump_perf as file:
+    # Dump hart performance metrics to JSON file
+    if args.dump_hart_perf:
+        with args.dump_hart_perf as file:
             file.write(json.dumps(perf_metrics, indent=4))
+    # Dump DMA performance metrics to JSON file
+    if args.dump_dma_perf and dma_metrics is not None:
+        with open(args.dump_dma_perf, 'w') as file:
+            file.write(json.dumps(dma_metrics, indent=4))
 
     # Check for any loose ends and warn before exiting
     seq_isns = len(fseq_info['fseq_pcs']) + len(fseq_info['cfg_buf'])
