@@ -7,6 +7,6 @@
     d: 32,
     B_r: 32,
     B_c: 32,
-    dtype: "FP32",
-    baseline: false
+    dtype: "FP8",
+    baseline: true
 }
