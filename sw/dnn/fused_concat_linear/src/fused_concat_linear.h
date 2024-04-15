@@ -29,7 +29,7 @@ typedef struct {
     void *linear_output;
     precision_t dtype;
     uint32_t baseline;
-    void* gemm_implementation;
+    void *gemm_implementation;
 } fused_concat_linear_layer_t;
 
 static inline int fused_concat_linear_baseline(fused_concat_linear_layer_t l) {
@@ -47,7 +47,27 @@ static inline int fused_concat_linear_baseline(fused_concat_linear_layer_t l) {
     uint32_t k = l.input_shape[1] * l.num_inputs;
     uint32_t n = l.output_shape[1];
 
-    gemm_args_t gemm_args = {1.0, l.dtype, 0, 1, 0, snrt_cluster_num(), 1, 1, 0, 1, 1, 0, 0, m, n, k, l.concat_output, l.weights, 0, l.linear_output, l.gemm_implementation};
+    gemm_args_t gemm_args = {1.0,
+                             l.dtype,
+                             0,
+                             1,
+                             0,
+                             snrt_cluster_num(),
+                             1,
+                             1,
+                             0,
+                             1,
+                             1,
+                             0,
+                             0,
+                             m,
+                             n,
+                             k,
+                             l.concat_output,
+                             l.weights,
+                             0,
+                             l.linear_output,
+                             l.gemm_implementation};
     gemm(&gemm_args);
 
     snrt_global_barrier();
@@ -72,7 +92,27 @@ static inline int fused_concat_linear_optimized(fused_concat_linear_layer_t l) {
     }
     snrt_cluster_hw_barrier();
 
-    gemm_args_t gemm_args = {1.0, l.dtype, 0, 0, 1, 1, 1, l.num_inputs, 0, 1, 1, 0, 0, m, n, concat_k, a, l.weights, 0, l.linear_output, l.gemm_implementation};
+    gemm_args_t gemm_args = {1.0,
+                             l.dtype,
+                             0,
+                             0,
+                             1,
+                             1,
+                             1,
+                             l.num_inputs,
+                             0,
+                             1,
+                             1,
+                             0,
+                             0,
+                             m,
+                             n,
+                             concat_k,
+                             a,
+                             l.weights,
+                             0,
+                             l.linear_output,
+                             l.gemm_implementation};
     gemm(&gemm_args);
 
     snrt_global_barrier();

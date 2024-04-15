@@ -6,7 +6,7 @@
 # Luca Colagrande <colluca@iis.ee.ethz.ch>
 
 import sys
-import torch
+# import torch
 from pathlib import Path
 from datagen import exact_flexfloat_golden_model
 import pyflexfloat as ff

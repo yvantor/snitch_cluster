@@ -6,7 +6,7 @@
 # Luca Colagrande <colluca@iis.ee.ethz.ch>
 
 import sys
-import torch
+# import torch
 from pathlib import Path
 from datagen import TransposeDataGen
 

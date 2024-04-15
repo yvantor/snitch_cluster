@@ -20,7 +20,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "../../../blas/"))
 import data_utils  # noqa: E402
 from data_utils import emit_license, \
                        format_struct_definition, format_array_definition, \
-                       format_array_declaration, format_ifdef_wrapper  # noqa: E402
+                       format_array_declaration  # noqa: E402
 import gemm  # noqa: E402
 
 np.random.seed(42)
@@ -188,15 +188,15 @@ def emit_header(section, params):
 
     validate_config(gemm_impl=gemm_impl, **params)
 
-    torch_type = data_utils.torch_type_from_precision_t(prec)
+    # torch_type = data_utils.torch_type_from_precision_t(prec)
     ff_desc = data_utils.ff_desc_from_precision_t(prec)
     ctype = data_utils.ctype_from_precision_t(prec)
 
     # Generate same data for all dtypes for easier debugging.
     # To achieve this, we always generate in FP16 and then convert.
-    _Q = torch.rand(N, d, requires_grad=False, dtype=torch.float16).to(dtype=torch_type)
-    _K = torch.rand(N, d, requires_grad=False, dtype=torch.float16).to(dtype=torch_type)
-    _V = torch.rand(N, d, requires_grad=False, dtype=torch.float16).to(dtype=torch_type)
+    # Q = torch.rand(N, d, requires_grad=False, dtype=torch.float16).to(dtype=torch_type)
+    # K = torch.rand(N, d, requires_grad=False, dtype=torch.float16).to(dtype=torch_type)
+    # V = torch.rand(N, d, requires_grad=False, dtype=torch.float16).to(dtype=torch_type)
     Q = ff.array(np.random.rand(N, d), ff_desc)
     K = ff.array(np.random.rand(N, d), ff_desc)
     V = ff.array(np.random.rand(N, d), ff_desc)

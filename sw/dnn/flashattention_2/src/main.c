@@ -4,8 +4,8 @@
 //
 // Luca Colagrande <colluca@iis.ee.ethz.ch>
 
-#include "dnn.h"
 #include "blas.h"
+#include "dnn.h"
 
 #include "data.h"
 
