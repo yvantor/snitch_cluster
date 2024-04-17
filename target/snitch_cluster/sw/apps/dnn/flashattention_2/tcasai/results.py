@@ -72,7 +72,7 @@ class Simulation():
     def build_visual_trace(self):
         """Build the visual trace of the simulation."""
         subprocess.run(['make', '-C', '../../../../../', 'visual-trace', f'SIM_DIR={self.sim_dir}',
-                    f'ROI_SPEC={ROI_SPEC}', '-j'], check=True)
+                       f'ROI_SPEC={ROI_SPEC}', '-j'], check=True)
 
 
 def load_simulation(model):
@@ -97,10 +97,10 @@ def get_total_runtime(sim, model):
                    sim.get_metric('hart_0', 'PxV', 'cycles')
     tc_loop_time = tc_iter_time * Tc
     tr_iter_time = sim.get_metric('hart_8', 'copy Q', 'cycles') + \
-              sim.get_metric('hart_0', 'init', 'cycles') + \
-              tc_loop_time + \
-              sim.get_metric('hart_0', 'rescale', 'cycles') + \
-              sim.get_metric('hart_0', 'rescale', 'cycles')
+                   sim.get_metric('hart_0', 'init', 'cycles') + \
+                   tc_loop_time + \
+                   sim.get_metric('hart_0', 'rescale', 'cycles') + \
+                   sim.get_metric('hart_0', 'rescale', 'cycles')
     total_time = tr_iter_time * Tr
     return total_time
 
