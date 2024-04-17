@@ -61,6 +61,14 @@ static inline void flashattention_2_fp32(flashattention_2_layer_t layer) {
     tcdm_ptr += m_i_prev_size;
     float *l_i = tcdm_ptr;
     tcdm_ptr += l_i_size;
+
+    // allocate space for V^t when using optimized kernels
+    float *V_t;
+    if (!baseline) {
+        V_t = tcdm_ptr;
+        tcdm_ptr += B_c * d * sizeof(float);
+    }
+
     float shifted_exp;
     float row_sum;
 
@@ -203,10 +211,6 @@ static inline void flashattention_2_fp32(flashattention_2_layer_t layer) {
                     // The SIMD-optimized GEMM kernel performs the A*B^t
                     // operation. We must transpose V in advance, so
                     // we can compute P*(V^t)^t with the optimized GEMM.
-
-                    // Allocate space for V^t
-                    float *V_t = tcdm_ptr;
-                    tcdm_ptr += B_c * d * sizeof(float);
 
                     // Compute V^t
                     transpose_kernel(FP32, V_fa, V_t, B_c, d, baseline);
