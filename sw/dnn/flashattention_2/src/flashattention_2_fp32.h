@@ -191,7 +191,7 @@ static inline void flashattention_2_fp32(flashattention_2_layer_t layer) {
                         beta = 0;
                     else
                         beta = 1;
-                    sc_st_gemm(dtype, 0, 0, 0, B_r, d, B_c, 1, P_fa, B_c, V_fa,
+                    sc_st_gemm(dtype, 1, 0, 0, B_r, d, B_c, 1, P_fa, B_c, V_fa,
                                d, beta, O_fa, d, gemm_implementation);
                 } else {
                     // The SIMD-optimized GEMM kernel performs the A*B^t
@@ -209,7 +209,7 @@ static inline void flashattention_2_fp32(flashattention_2_layer_t layer) {
                         beta = 0;
                     else
                         beta = 1;
-                    sc_st_gemm(dtype, 0, 0, 1, B_r, d, B_c, 1, P_fa, B_c, V_t,
+                    sc_st_gemm(dtype, 1, 0, 1, B_r, d, B_c, 1, P_fa, B_c, V_t,
                                B_c, beta, O_fa, d, gemm_implementation);
                 }
             } else {
