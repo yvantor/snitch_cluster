@@ -6,7 +6,7 @@
     N: 64,
     d: 256,
     B_r: 16,
-    B_c: 64,
+    B_c: 16,
     dtype: "FP32",
     baseline: false
 }
