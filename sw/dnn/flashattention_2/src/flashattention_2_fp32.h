@@ -39,35 +39,21 @@ static inline void flashattention_2_fp32(flashattention_2_layer_t layer) {
     uint32_t m_i_size = B_r * sizeof(float);
     uint32_t m_i_prev_size = m_i_size;
     uint32_t l_i_size = B_r * sizeof(float);
-    uint32_t shifted_exp_size = B_r * sizeof(float);
 
     // allocate memory in TCDM
-    void *tcdm_ptr = (float *)snrt_l1_next();
-    float *Q_fa = tcdm_ptr;
-    tcdm_ptr += q_fa_size;
-    float *K_fa = tcdm_ptr;
-    tcdm_ptr += k_fa_size;
-    float *V_fa = tcdm_ptr;
-    tcdm_ptr += v_fa_size;
-    float *S_fa = tcdm_ptr;
-    tcdm_ptr += s_fa_size;
-    float *P_fa = tcdm_ptr;
-    tcdm_ptr += p_fa_size;
-    float *O_fa = tcdm_ptr;
-    tcdm_ptr += o_fa_size;
-    float *m_i = tcdm_ptr;
-    tcdm_ptr += m_i_size;
-    float *m_i_prev = tcdm_ptr;
-    tcdm_ptr += m_i_prev_size;
-    float *l_i = tcdm_ptr;
-    tcdm_ptr += l_i_size;
+    float *Q_fa = snrt_l1_alloc_cluster_local(q_fa_size, sizeof(float));
+    float *K_fa = snrt_l1_alloc_cluster_local(k_fa_size, sizeof(float));
+    float *V_fa = snrt_l1_alloc_cluster_local(v_fa_size, sizeof(float));
+    float *S_fa = snrt_l1_alloc_cluster_local(s_fa_size, sizeof(float));
+    float *P_fa = snrt_l1_alloc_cluster_local(p_fa_size, sizeof(float));
+    float *O_fa = snrt_l1_alloc_cluster_local(o_fa_size, sizeof(float));
+    float *m_i = snrt_l1_alloc_cluster_local(m_i_size, sizeof(float));
+    float *m_i_prev = snrt_l1_alloc_cluster_local(m_i_prev_size, sizeof(float));
+    float *l_i = snrt_l1_alloc_cluster_local(l_i_size, sizeof(float));
 
     // allocate space for V^t when using optimized kernels
     float *V_t;
-    if (!baseline) {
-        V_t = tcdm_ptr;
-        tcdm_ptr += B_c * d * sizeof(float);
-    }
+    if (!baseline) V_t = snrt_l1_alloc_cluster_local(v_fa_size, sizeof(float));
 
     float shifted_exp;
     float row_sum;
