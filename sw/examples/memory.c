@@ -31,12 +31,12 @@ int main() {
         snrt_barrier();
     }
 
-    // Use snrt_l1alloc() to allocate a chunk of memory in the cluster-private
+    // Use snrt_l1_alloc() to allocate a chunk of memory in the cluster-private
     // TCMD L1 scratchpad memory. Free is currently not possible. Store the
     // pointer in a static variable that is shared amongst the cluster cores
     static void* p;
     if (core_idx == 0) {
-        p = snrt_l1alloc(1024);
+        p = snrt_l1_alloc(1024);
         printf("Allocated at %#x\n", p);
     }
     for (uint32_t i = 0; i < core_num; i++) {
