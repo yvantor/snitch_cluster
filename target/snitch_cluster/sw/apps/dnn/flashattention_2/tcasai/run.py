@@ -79,8 +79,8 @@ def post_process(cfg):
     # subprocess.run(['make', '-C', '../../../../../', f'SIM_DIR={sim_dir}', 'clean-traces', 'clean-annotate'], check=True)
     subprocess.run(['make', '-C', '../../../../../', f'SIM_DIR={sim_dir}', 'annotate', f'BINARY={binary}', '-j'],
                    check=True)
-    subprocess.run(['make', '-C', '../../../../../', f'SIM_DIR={sim_dir}', f'ROI_SPEC={ROI_SPEC}',
-                   f'BINARY={binary}', 'visual-trace'], check=True)
+    # subprocess.run(['make', '-C', '../../../../../', f'SIM_DIR={sim_dir}', f'ROI_SPEC={ROI_SPEC}',
+    #                f'BINARY={binary}', 'visual-trace'], check=True)
 
 
 def main():

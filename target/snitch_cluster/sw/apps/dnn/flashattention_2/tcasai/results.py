@@ -11,30 +11,36 @@ import sys
 import subprocess
 import functools
 import json
+import json5
+from mako.template import Template
 
 sys.path.append(str(Path(__file__).parent / '../../../../../util/'))
 import snitch_cluster  # noqa: E402
 
 ROI_SPEC = Path.cwd() / 'roi.json.tpl'
-MODELS = {
-    'vit-base': {'N': 192, 'd': 64},
-    'vit-large': {'N': 192, 'd': 64},
-    'vit-huge': {'N': 192, 'd': 80},
-    **{f'gpt-3-xl-forward-{N}': {'N': N, 'd': 128} for N in [128, 256, 512, 1024, 2048]},
-    **{f'gpt-j-forward-{N}': {'N': N, 'd': 256} for N in [128, 256, 512, 1024, 2048]},
-}
+
+EXPERIMENTS = []
+for prec in [8, 16, 32]:
+    EXPERIMENTS.append({'name': f'fp{prec}-opt-vit-base', 'N': 192})
+    EXPERIMENTS.append({'name': f'fp{prec}-opt-vit-large', 'N': 192})
+    EXPERIMENTS.append({'name': f'fp{prec}-opt-vit-huge', 'N': 192})
+    for N in [128, 256, 512, 1024, 2048]:
+        EXPERIMENTS.append({'name': f'fp{prec}-opt-gpt-3-xl-forward-{N}', 'N': N})
+        EXPERIMENTS.append({'name': f'fp{prec}-opt-gpt-j-forward-{N}', 'N': N})
+
 
 class Simulation():
 
     def __init__(self, sim_dir):
         """Initializes a simulation object from the run directory."""
-        self.sim_dir = sim_dir
+        self.sim_dir = Path(sim_dir)
+        self.roi_spec = Path(self.sim_dir) / 'roi_spec.json'
+        self.roi_json = Path(self.sim_dir) / 'logs' / 'roi.json'
 
     @functools.cached_property
     def performance_data(self):
         """Returns all performance data logged during simulation."""
-        roi_json = Path(self.sim_dir) / 'logs' / 'roi.json'
-        with open(roi_json, 'r') as f:
+        with open(self.roi_json, 'r') as f:
             return json.load(f)
 
     def get_metric(self, thread, region, metric, label_idx=0):
@@ -69,28 +75,55 @@ class Simulation():
         # Get metric
         return self.performance_data[thread][reg_idx]['attrs'][metric]
 
-    def build_visual_trace(self):
+    def make_perf(self):
+        """Build roi.json file for the simulation."""
+        subprocess.run(['make', '-C', '../../../../../', f'{self.roi_json}',
+                       f'SIM_DIR={self.sim_dir}', f'ROI_SPEC={self.roi_spec}', '-j'], check=True)
+
+    def make_visual_trace(self):
         """Build the visual trace of the simulation."""
         subprocess.run(['make', '-C', '../../../../../', 'visual-trace', f'SIM_DIR={self.sim_dir}',
-                       f'ROI_SPEC={ROI_SPEC}', '-j'], check=True)
+                       f'ROI_SPEC={self.roi_spec}', '-j'], check=True)
 
 
-def load_simulation(model):
+def load_simulation(experiment):
     """Returns the simulation object for a given model."""
-    return Simulation(Path.cwd() / f'runs/flashattention_2-fp32-opt-{model}')
+    # Fill out ROI spec template with experiment parameters
+    # and write to simulation directory
+    sim_dir = Path.cwd() / f'runs/flashattention_2-{get_simulation_name(experiment)}'
+    with open(ROI_SPEC, 'r') as f:
+        spec_template = Template(f.read())
+        rendered_spec = spec_template.render(
+            T_r=experiment['simulated_Tr'],
+            T_c=experiment['simulated_Tc']
+        )
+        rendered_spec_path = sim_dir / 'roi_spec.json'
+        with open(rendered_spec_path, 'w') as of:
+            of.write(rendered_spec)
+    # Create simulation object
+    return Simulation(sim_dir)
 
 
-def get_total_runtime(sim, model):
+def get_total_runtime(experiment):
     # Parameters
-    N = MODELS[model]['N']
-    Br = 16
-    Bc = 64
+    N = experiment['N']
+    Br = experiment['Br']
+    Bc = experiment['Bc']
 
     # Derived parameters
     Tr = N / Br
     Tc = N / Bc
 
     # Calculate total runtime
+    sim = experiment['sim']
+    # print(f'{"copy Q":<30}', sim.get_metric('hart_8', 'copy Q', 'cycles'))
+    # print(f'{"init":<30}', sim.get_metric('hart_0', 'init', 'cycles'))
+    # print(f'{"copy K & V":<30}', sim.get_metric('hart_8', 'copy K & V', 'cycles'))
+    # print(f'{"QxKt":<30}', sim.get_metric('hart_0', 'QxKt', 'cycles'))
+    # print(f'{"softmax":<30}', sim.get_metric('hart_0', 'softmax', 'cycles'))
+    # print(f'{"PxV":<30}', sim.get_metric('hart_0', 'PxV', 'cycles'))
+    # print(f'{"rescale":<30}', sim.get_metric('hart_0', 'rescale', 'cycles'))
+    # print(f'{"copy O":<30}', sim.get_metric('hart_8', 'copy O', 'cycles'))
     tc_iter_time = sim.get_metric('hart_8', 'copy K & V', 'cycles') + \
                    sim.get_metric('hart_0', 'QxKt', 'cycles') + \
                    sim.get_metric('hart_0', 'softmax', 'cycles') + \
@@ -100,20 +133,87 @@ def get_total_runtime(sim, model):
                    sim.get_metric('hart_0', 'init', 'cycles') + \
                    tc_loop_time + \
                    sim.get_metric('hart_0', 'rescale', 'cycles') + \
-                   sim.get_metric('hart_0', 'rescale', 'cycles')
+                   sim.get_metric('hart_8', 'copy O', 'cycles')
     total_time = tr_iter_time * Tr
     return total_time
 
 
+def get_model(experiment):
+    name = experiment['name']
+    if any(model in name for model in ['vit-base', 'vit-large']):
+        return 'vit-base'
+    elif 'vit-huge' in name:
+        return 'vit-huge'
+    elif 'gpt-j' in name:
+        return 'gpt-j'
+    elif 'gpt-3-xl' in name:
+        return 'gpt-3-xl'
+    else:
+        raise ValueError(f'Experiment {name} uses an unsupported model')
+
+
+def get_implementation(experiment):
+    name = experiment['name']
+    if 'fp32-opt' in name:
+        return 'fp32-opt'
+    elif 'fp16-opt' in name:
+        return 'fp16-opt'
+    elif 'fp8-opt' in name:
+        return 'fp8-opt'
+    else:
+        raise ValueError(f'Experiment {name} uses an unsupported implementation')
+
+
+def get_fpu_width(experiment):
+    name = experiment['name']
+    if 'fp32' in name:
+        return 2
+    elif 'fp16' in name:
+        return 4
+    elif 'fp8' in name:
+        return 8
+    else:
+        raise ValueError(f'Experiment {name} uses an unsupported implementation')
+
+def get_simulation_name(experiment):
+    return f'{get_implementation(experiment)}-{get_model(experiment)}'
+
+
+def populate_from_cfg_file(experiment):
+    cfg_file = Path.cwd() / 'cfg' / f'{get_simulation_name(experiment)}.json'
+    with open(cfg_file, 'r') as f:
+        cfg = json5.load(f)
+        experiment['Br'] = cfg['B_r']
+        experiment['Bc'] = cfg['B_c']
+        experiment['d'] = cfg['d']
+        experiment['simulated_N'] = cfg['N']
+        experiment['simulated_Tr'] = int(experiment['simulated_N'] / experiment['Br'])
+        experiment['simulated_Tc'] = int(experiment['simulated_N'] / experiment['Bc'])
+
+
+def gflop(experiment):
+    return (2 * experiment['d'] + 5) * (experiment['N'] ** 2) * 10e-9
+
+
 def main():
-
-    sim = load_simulation('vit-base')
-    sim.build_visual_trace()
-
-    for model in MODELS:
-        print(f'{model}:')
-        total_time = get_total_runtime(sim, model)
-        print(f'\tTotal time: {total_time / 10e9}s')
+    for experiment in EXPERIMENTS:
+        # Read experiment details from cfg file
+        populate_from_cfg_file(experiment)
+        # Load performance metrics logged by corresponding simulation
+        experiment['sim'] = load_simulation(experiment)
+        # sim.make_visual_trace()
+    for experiment in EXPERIMENTS:
+        name = experiment['name']
+        time = get_total_runtime(experiment) / 10e9
+        GFLOPs = gflop(experiment)
+        GFLOPS = GFLOPs/time
+        peak = 8 * get_fpu_width(experiment)
+        util = GFLOPS / peak
+        print(f'{name}:')
+        print(f'\t{"GFLOPs":<30} {GFLOPs:>10.3f}')
+        print(f'\t{"Total time [ms]":<30} {time * 1000:>10.3f}')
+        print(f'\t{"GFLOPS":<30} {GFLOPS:>10.3f}')
+        print(f'\t{"Utilization":<30} {util:>10.3f}')
 
 
 if __name__ == '__main__':
