@@ -14,7 +14,7 @@
     load_c: 1,
     transa: false,
     transb: true, // must be true for SIMD
-    M: 16,
+	M: 18,
     N: 16,
     K: 16,
     alpha: 1,

@@ -57,8 +57,6 @@ class GemmDataGen(DataGen):
         assert (M % m_tiles) == 0, 'M is not an integer multiple of tile size'
         assert (N % n_tiles) == 0, 'N is not an integer multiple of tile size'
         assert (K % k_tiles) == 0, 'K is not an integer multiple of tile size'
-        assert (frac_m % 8) == 0, 'frac_m is not an integer multiple of the number of cores per' \
-                                  ' cluster'
         assert not (parallelize_m and parallelize_k), 'Cannot parallelize K and M simultaneously'
         assert not transa, 'SIMD kernels don\'t support transposed A matrix'
         assert (dtype == 8) or (impl == 'baseline') or (impl == 'naive') \
