@@ -44,10 +44,11 @@ def exact_golden_model(Q, K, V, B_r, B_c):
     K = K.numpy()
     V = V.numpy()
     # Get layer dimensions
-    N = Q.shape[0]
+    L = Q.shape[0]
+    S = K.shape[0]
     # Calculate tiling parameters
-    T_r = N // B_r
-    T_c = N // B_c
+    T_r = L // B_r
+    T_c = S // B_c
     # Transpose K
     K_t = np.transpose(K)
     # Iterate tiles
@@ -94,11 +95,12 @@ np.set_printoptions(formatter={'object': str})
 
 def exact_flexfloat_golden_model(Q, K, V, B_r, B_c, desc):
     # Get layer dimensions
-    N = Q.shape[0]
+    L = Q.shape[0]
     d = Q.shape[1]
+    S = K.shape[0]
     # Calculate tiling parameters
-    T_r = N // B_r
-    T_c = N // B_c
+    T_r = L // B_r
+    T_c = S // B_c
     # Transpose K
     K_t = np.transpose(K)
     # Iterate tiles
@@ -144,10 +146,9 @@ def exact_flexfloat_golden_model(Q, K, V, B_r, B_c, desc):
 
 
 # Verify layer parameters are valid
-def validate_config(N, d, B_r, B_c, dtype, baseline, gemm_impl):
-    assert (N % B_r) == 0, 'N is not an integer multiple of B_r'
-    assert (N % B_c) == 0, 'N is not an integer multiple of B_c'
-    assert (B_r % 8) == 0, 'B_r must be an integer multiple of the number of cores in a cluster'
+def validate_config(L, S, d, B_r, B_c, dtype, baseline, gemm_impl):
+    assert (L % B_r) == 0, 'L is not an integer multiple of B_r'
+    assert (S % B_c) == 0, 'S is not an integer multiple of B_c'
     assert dtype != 'FP64', 'FP64 precision is not supported yet'
 
     # Calculate total TCDM occupation
@@ -206,8 +207,8 @@ def get_gemm_implementation(params):
 
 
 def emit_header(section, params):
-
-    N = params['N']
+    L = params['L']
+    S = params['S']
     d = params['d']
     B_r = params['B_r']
     B_c = params['B_c']
@@ -222,12 +223,12 @@ def emit_header(section, params):
 
     # Generate same data for all dtypes for easier debugging.
     # To achieve this, we always generate in FP16 and then convert.
-    # Q = torch.rand(N, d, requires_grad=False, dtype=torch.float16).to(dtype=torch_type)
-    # K = torch.rand(N, d, requires_grad=False, dtype=torch.float16).to(dtype=torch_type)
-    # V = torch.rand(N, d, requires_grad=False, dtype=torch.float16).to(dtype=torch_type)
-    Q = ff.array(np.random.rand(N, d), ff_desc)
-    K = ff.array(np.random.rand(N, d), ff_desc)
-    V = ff.array(np.random.rand(N, d), ff_desc)
+    # Q = torch.rand(L, d, requires_grad=False, dtype=torch.float16).to(dtype=torch_type)
+    # K = torch.rand(S, d, requires_grad=False, dtype=torch.float16).to(dtype=torch_type)
+    # V = torch.rand(S, d, requires_grad=False, dtype=torch.float16).to(dtype=torch_type)
+    Q = ff.array(np.random.rand(L, d), ff_desc)
+    K = ff.array(np.random.rand(S, d), ff_desc)
+    V = ff.array(np.random.rand(S, d), ff_desc)
 
     output = exact_flexfloat_golden_model(Q, K, V, B_r, B_c, ff_desc)
 

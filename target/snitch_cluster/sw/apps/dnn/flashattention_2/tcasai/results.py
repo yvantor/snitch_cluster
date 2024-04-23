@@ -21,12 +21,14 @@ ROI_SPEC = Path.cwd() / 'roi.json.tpl'
 
 EXPERIMENTS = []
 for prec in [8, 16, 32]:
-    EXPERIMENTS.append({'name': f'fp{prec}-opt-vit-base', 'N': 192})
-    EXPERIMENTS.append({'name': f'fp{prec}-opt-vit-large', 'N': 192})
-    EXPERIMENTS.append({'name': f'fp{prec}-opt-vit-huge', 'N': 192})
-    for N in [128, 256, 512, 1024, 2048]:
-        EXPERIMENTS.append({'name': f'fp{prec}-opt-gpt-3-xl-forward-{N}', 'N': N})
-        EXPERIMENTS.append({'name': f'fp{prec}-opt-gpt-j-forward-{N}', 'N': N})
+    EXPERIMENTS.append({'name': f'fp{prec}-opt-vit-base', 'L': 192, 'S': 192})
+    EXPERIMENTS.append({'name': f'fp{prec}-opt-vit-large', 'L': 192, 'S': 192})
+    EXPERIMENTS.append({'name': f'fp{prec}-opt-vit-huge', 'L': 192, 'S': 192})
+    for S in [128, 256, 512, 1024, 2048]:
+        EXPERIMENTS.append({'name': f'fp{prec}-opt-gpt-3-xl-forward-{S}', 'L': S, 'S': S})
+        EXPERIMENTS.append({'name': f'fp{prec}-opt-gpt-j-forward-{S}', 'L': S, 'S': S})
+        EXPERIMENTS.append({'name': f'fp{prec}-opt-gpt-3-xl-inf-{S}', 'L': 1, 'S': S})
+        EXPERIMENTS.append({'name': f'fp{prec}-opt-gpt-j-inf-{S}', 'L': 1, 'S': S})
 
 
 class Simulation():
@@ -106,13 +108,14 @@ def load_simulation(experiment):
 
 def get_total_runtime(experiment):
     # Parameters
-    N = experiment['N']
+    L = experiment['L']
+    S = experiment['S']
     Br = experiment['Br']
     Bc = experiment['Bc']
 
     # Derived parameters
-    Tr = N / Br
-    Tc = N / Bc
+    Tr = L / Br
+    Tc = S / Bc
 
     # Calculate total runtime
     sim = experiment['sim']
@@ -144,6 +147,10 @@ def get_model(experiment):
         return 'vit-base'
     elif 'vit-huge' in name:
         return 'vit-huge'
+    elif 'gpt-j-inf' in name:
+        return 'gpt-j-inf'
+    elif 'gpt-3-xl-inf' in name:
+        return 'gpt-3-xl-inf'
     elif 'gpt-j' in name:
         return 'gpt-j'
     elif 'gpt-3-xl' in name:
@@ -175,6 +182,7 @@ def get_fpu_width(experiment):
     else:
         raise ValueError(f'Experiment {name} uses an unsupported implementation')
 
+
 def get_simulation_name(experiment):
     return f'{get_implementation(experiment)}-{get_model(experiment)}'
 
@@ -186,13 +194,18 @@ def populate_from_cfg_file(experiment):
         experiment['Br'] = cfg['B_r']
         experiment['Bc'] = cfg['B_c']
         experiment['d'] = cfg['d']
-        experiment['simulated_N'] = cfg['N']
-        experiment['simulated_Tr'] = int(experiment['simulated_N'] / experiment['Br'])
-        experiment['simulated_Tc'] = int(experiment['simulated_N'] / experiment['Bc'])
+        experiment['simulated_L'] = cfg['L']
+        experiment['simulated_S'] = cfg['S']
+        experiment['simulated_Tr'] = int(experiment['simulated_L'] / experiment['Br'])
+        experiment['simulated_Tc'] = int(experiment['simulated_S'] / experiment['Bc'])
 
 
 def gflop(experiment):
-    return (2 * experiment['d'] + 5) * (experiment['N'] ** 2) * 10e-9
+    if 'inf' in experiment['name']:
+        return (2 * experiment['d'] + 5) * experiment['S'] * 10e-9
+    else:
+        assert experiment['S'] == experiment['L'], 'Unsupported GFLOPs calculation for L!=S'
+        return (2 * experiment['d'] + 5) * (experiment['S'] ** 2) * 10e-9
 
 
 def main():
@@ -201,7 +214,7 @@ def main():
         populate_from_cfg_file(experiment)
         # Load performance metrics logged by corresponding simulation
         experiment['sim'] = load_simulation(experiment)
-        # sim.make_visual_trace()
+        # experiment['sim'].make_perf()
     for experiment in EXPERIMENTS:
         name = experiment['name']
         time = get_total_runtime(experiment) / 10e9
