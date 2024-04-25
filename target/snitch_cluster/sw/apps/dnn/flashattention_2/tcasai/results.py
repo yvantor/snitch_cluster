@@ -132,7 +132,7 @@ def get_total_runtime(experiment):
     # Define the simulated tc and tr iterations to extract the region runtimes from.
     # The second tc iteration is the worst case, since upon the first iteration
     # several calculations are not performed.
-    tc_iteration = 0
+    tc_iteration = 1
     tr_iteration = 0
 
     # Calculate total runtime
