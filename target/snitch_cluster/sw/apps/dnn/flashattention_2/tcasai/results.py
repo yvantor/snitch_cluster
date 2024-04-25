@@ -13,22 +13,26 @@ import functools
 import json
 import json5
 from mako.template import Template
+import math
 
 sys.path.append(str(Path(__file__).parent / '../../../../../util/'))
 import snitch_cluster  # noqa: E402
+
+NR_CORES_PER_CLUSTER = 8
+NR_GROUPS = 8
 
 ROI_SPEC = Path.cwd() / 'roi.json.tpl'
 
 EXPERIMENTS = []
 for prec in [8, 16, 32]:
-    EXPERIMENTS.append({'name': f'fp{prec}-opt-vit-base', 'L': 192, 'S': 192})
-    EXPERIMENTS.append({'name': f'fp{prec}-opt-vit-large', 'L': 192, 'S': 192})
-    EXPERIMENTS.append({'name': f'fp{prec}-opt-vit-huge', 'L': 192, 'S': 192})
+    EXPERIMENTS.append({'name': f'fp{prec}-opt-vit-base', 'L': 192, 'S': 192, 'H': 12})
+    EXPERIMENTS.append({'name': f'fp{prec}-opt-vit-large', 'L': 192, 'S': 192, 'H': 16})
+    EXPERIMENTS.append({'name': f'fp{prec}-opt-vit-huge', 'L': 192, 'S': 192, 'H': 16})
     for S in [128, 256, 512, 1024, 2048]:
-        EXPERIMENTS.append({'name': f'fp{prec}-opt-gpt-3-xl-forward-{S}', 'L': S, 'S': S})
-        EXPERIMENTS.append({'name': f'fp{prec}-opt-gpt-j-forward-{S}', 'L': S, 'S': S})
-        EXPERIMENTS.append({'name': f'fp{prec}-opt-gpt-3-xl-inf-{S}', 'L': 1, 'S': S})
-        EXPERIMENTS.append({'name': f'fp{prec}-opt-gpt-j-inf-{S}', 'L': 1, 'S': S})
+        EXPERIMENTS.append({'name': f'fp{prec}-opt-gpt-3-xl-forward-{S}', 'L': S, 'S': S, 'H': 16})
+        EXPERIMENTS.append({'name': f'fp{prec}-opt-gpt-j-forward-{S}', 'L': S, 'S': S, 'H': 16})
+        EXPERIMENTS.append({'name': f'fp{prec}-opt-gpt-3-xl-inf-{S}', 'L': 1, 'S': S, 'H': 16})
+        EXPERIMENTS.append({'name': f'fp{prec}-opt-gpt-j-inf-{S}', 'L': 1, 'S': S, 'H': 16})
 
 
 class Simulation():
@@ -112,32 +116,50 @@ def get_total_runtime(experiment):
     S = experiment['S']
     Br = experiment['Br']
     Bc = experiment['Bc']
+    H = experiment['H']
 
     # Derived parameters
     Tr = L / Br
     Tc = S / Bc
+    # print(f'Tr: {Tr}')
+    # print(f'Tc: {Tc}')
+
+    # Correct DMA bandwidth by a factor which accounts for contention between
+    # clusters in a group (bwcf = bandwidth correction factor).
+    # We map each head spatially to a unique cluster.
+    bwcf = 1 / math.ceil(H / NR_GROUPS)
+
+    # Define the simulated tc and tr iterations to extract the region runtimes from.
+    # The second tc iteration is the worst case, since upon the first iteration
+    # several calculations are not performed.
+    tc_iteration = 0
+    tr_iteration = 0
 
     # Calculate total runtime
     sim = experiment['sim']
-    # print(f'{"copy Q":<30}', sim.get_metric('hart_8', 'copy Q', 'cycles'))
-    # print(f'{"init":<30}', sim.get_metric('hart_0', 'init', 'cycles'))
-    # print(f'{"copy K & V":<30}', sim.get_metric('hart_8', 'copy K & V', 'cycles'))
-    # print(f'{"QxKt":<30}', sim.get_metric('hart_0', 'QxKt', 'cycles'))
-    # print(f'{"softmax":<30}', sim.get_metric('hart_0', 'softmax', 'cycles'))
-    # print(f'{"PxV":<30}', sim.get_metric('hart_0', 'PxV', 'cycles'))
-    # print(f'{"rescale":<30}', sim.get_metric('hart_0', 'rescale', 'cycles'))
-    # print(f'{"copy O":<30}', sim.get_metric('hart_8', 'copy O', 'cycles'))
-    tc_iter_time = sim.get_metric('hart_8', 'copy K & V', 'cycles') + \
-                   sim.get_metric('hart_0', 'QxKt', 'cycles') + \
-                   sim.get_metric('hart_0', 'softmax', 'cycles') + \
-                   sim.get_metric('hart_0', 'PxV', 'cycles')
+    # print(f'{"copy Q":<30}', sim.get_metric('hart_8', 'copy Q', 'cycles', tr_iteration))
+    # print(f'{"init":<30}', sim.get_metric('hart_0', 'init', 'cycles', tr_iteration))
+    # print(f'{"copy K & V":<30}', sim.get_metric('hart_8', 'copy K & V', 'cycles', tc_iteration))
+    # print(f'{"QxKt":<30}', sim.get_metric('hart_0', 'QxKt', 'cycles', tc_iteration))
+    # print(f'{"softmax":<30}', sim.get_metric('hart_0', 'softmax', 'cycles', tc_iteration))
+    # print(f'{"PxV":<30}', sim.get_metric('hart_0', 'PxV', 'cycles', tc_iteration))
+    # print(f'{"rescale":<30}', sim.get_metric('hart_0', 'rescale', 'cycles', tr_iteration))
+    # print(f'{"copy O":<30}', sim.get_metric('hart_8', 'copy O', 'cycles', tr_iteration))
+    tc_iter_time = sim.get_metric('hart_8', 'copy K & V', 'cycles', tc_iteration) / bwcf  + \
+                   sim.get_metric('hart_0', 'QxKt', 'cycles', tc_iteration) + \
+                   sim.get_metric('hart_0', 'softmax', 'cycles', tc_iteration) + \
+                   sim.get_metric('hart_0', 'PxV', 'cycles', tc_iteration)
     tc_loop_time = tc_iter_time * Tc
-    tr_iter_time = sim.get_metric('hart_8', 'copy Q', 'cycles') + \
-                   sim.get_metric('hart_0', 'init', 'cycles') + \
+    tr_iter_time = sim.get_metric('hart_8', 'copy Q', 'cycles', tr_iteration) / bwcf + \
+                   sim.get_metric('hart_0', 'init', 'cycles', tr_iteration) + \
                    tc_loop_time + \
-                   sim.get_metric('hart_0', 'rescale', 'cycles') + \
-                   sim.get_metric('hart_8', 'copy O', 'cycles')
+                   sim.get_metric('hart_0', 'rescale', 'cycles', tr_iteration) + \
+                   sim.get_metric('hart_8', 'copy O', 'cycles', tr_iteration) / bwcf
     total_time = tr_iter_time * Tr
+    # print(f'tc_iter_time: {tc_iter_time}')
+    # print(f'tc_loop_time: {tc_loop_time}')
+    # print(f'tr_iter_time: {tr_iter_time}')
+    # print(f'total_time: {total_time}')
     return total_time
 
 
@@ -202,10 +224,10 @@ def populate_from_cfg_file(experiment):
 
 def gflop(experiment):
     if 'inf' in experiment['name']:
-        return (2 * experiment['d'] + 5) * experiment['S'] * 10e-9
+        return (2 * experiment['d'] + 5) * experiment['S'] * 1e-9 * experiment['H']
     else:
         assert experiment['S'] == experiment['L'], 'Unsupported GFLOPs calculation for L!=S'
-        return (2 * experiment['d'] + 5) * (experiment['S'] ** 2) * 10e-9
+        return (2 * experiment['d'] + 5) * (experiment['S'] ** 2) * 1e-9 * experiment['H']
 
 
 def main():
@@ -215,18 +237,24 @@ def main():
         # Load performance metrics logged by corresponding simulation
         experiment['sim'] = load_simulation(experiment)
         # experiment['sim'].make_perf()
+        # experiment['sim'].make_visual_trace()
     for experiment in EXPERIMENTS:
         name = experiment['name']
-        time = get_total_runtime(experiment) / 10e9
+        time = get_total_runtime(experiment) / 1e9
         GFLOPs = gflop(experiment)
         GFLOPS = GFLOPs/time
-        peak = 8 * get_fpu_width(experiment)
+        # We are computing the peak performance not based on the total number of clusters
+        # in the system but based on the total number of clusters which the network
+        # effectively uses, as a measure of the efficiency with which the employed clusters
+        # are used.
+        peak = 2 * NR_CORES_PER_CLUSTER * get_fpu_width(experiment) * experiment['H']
         util = GFLOPS / peak
         print(f'{name}:')
-        print(f'\t{"GFLOPs":<30} {GFLOPs:>10.3f}')
-        print(f'\t{"Total time [ms]":<30} {time * 1000:>10.3f}')
-        print(f'\t{"GFLOPS":<30} {GFLOPS:>10.3f}')
-        print(f'\t{"Utilization":<30} {util:>10.3f}')
+        print(f'\t{"GFLOPs:":<30} {GFLOPs:>10.3f}')
+        print(f'\t{"Total time [ms]:":<30} {time * 1000:>10.3f}')
+        GFLOPS_over_peak_str = f'{int(GFLOPS)}/{int(peak)}'
+        print(f'\t{"GFLOPS/peak:":<30} {GFLOPS_over_peak_str:>10}')
+        print(f'\t{"Utilization:":<30} {util*100:>9.1f}%')
 
 
 if __name__ == '__main__':
