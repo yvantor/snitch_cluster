@@ -160,7 +160,9 @@ inline void snrt_dma_wait_all_channel(uint32_t channel) {
         "1: \n"
         "dmstat  %[tmp], %[cfg] \n"
         "bne %[tmp], zero, 1b \n"
-        : [ tmp ] "=&r"(tmp) : [ cfg ] "r"(cfg) :"t0");
+        : [ tmp ] "=&r"(tmp)
+        : [ cfg ] "r"(cfg)
+        : "t0");
 }
 
 /// Wait until all channels are idle
@@ -173,7 +175,9 @@ inline void snrt_dma_wait_all_channels(uint32_t num_channels) {
             "1: \n"
             "dmstat  %[tmp], %[cfg] \n"
             "bne %[tmp], zero, 1b \n"
-            : [ tmp ] "=&r"(tmp) : [ cfg ] "r"(cfg) :"t0");
+            : [ tmp ] "=&r"(tmp)
+            : [ cfg ] "r"(cfg)
+            : "t0");
     }
 }
 
