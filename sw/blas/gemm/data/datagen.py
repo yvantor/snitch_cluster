@@ -100,6 +100,7 @@ def emit_header(**kwargs):
     data_str += [format_scalar_definition('uint32_t', 'BETA', kwargs['beta'])]
     data_str += [format_scalar_definition('uint32_t', 'dtype_size', kwargs['prec']//8)]
     data_str += [format_scalar_definition('uint32_t', 'expand', kwargs['expand'])]
+    data_str += [format_scalar_definition('uint32_t', 'expand_to_fp32', kwargs['expand_to_fp32'])]
     data_str += [format_vector_definition(C_TYPES[str(kwargs['prec'])], 'a', a.flatten(),
                  alignment=BURST_ALIGNMENT, section=kwargs['section'])]
     data_str += [format_vector_definition(C_TYPES[str(kwargs['prec'])], 'b', b.flatten(),

@@ -8,6 +8,8 @@
 #include <math.h>
 #include <stdint.h>
 
+#define BIST
+
 #include "data.h"
 #include "gemm.h"
 #include "snrt.h"
@@ -61,7 +63,7 @@ int main() {
             ldb = N;
         }
 
-        gemm(dtype_size, expand, setup_ssr, TA, TB, frac_m, N, K, 1, local_a,
+        gemm(dtype_size, expand, expand_to_fp32, setup_ssr, TA, TB, frac_m, N, K, 1, local_a,
              lda, local_b, ldb, BETA, local_c, ldc);
 
         uint32_t end_cycle = snrt_mcycle();

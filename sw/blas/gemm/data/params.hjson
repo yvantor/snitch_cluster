@@ -12,5 +12,6 @@
     ta: false,
     tb: true, // must be true for SIMD
     prec: 64,
-    expand: 0
+    expand: 0,
+    expand_to_fp32: 0
 }

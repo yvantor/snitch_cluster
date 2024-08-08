@@ -883,12 +883,205 @@ void gemm_fp8_ex_opt(uint32_t M, uint32_t N, uint32_t K, char* A, uint32_t ldA,
     snrt_ssr_disable();
 }
 
+void gemm_fp8_ex32_opt(uint32_t M, uint32_t N, uint32_t K, char* A, uint32_t ldA,
+                       char* B, uint32_t ldB, char* C, uint32_t ldC,
+                       const uint32_t* BETA, uint32_t setup_SSR) {
+    // Accumulating currently not implemented
+    if (*BETA != 0) return;
+
+    // Unrolling factor of most inner loop.
+    // Should be at least as high as the FMA/DOTP delay
+    // for maximum utilization
+    const uint32_t unroll = 8;
+    const uint32_t double_unroll = 16;
+
+    // SSR strides and bounds only have to be configured
+    // once in the beginning
+    if (setup_SSR) {
+        uint32_t ssr0_b[4] = {unroll, K / 8, N / unroll, M};
+        uint32_t ssr0_i[4] = {0, sizeof(char) * 8, 0, sizeof(char) * ldA};
+
+        uint32_t ssr1_b[4] = {unroll, K / 8, N / unroll, M};
+        uint32_t ssr1_i[4] = {sizeof(char) * ldB, sizeof(char) * 8,
+                              sizeof(char) * unroll * ldB, 0};
+
+        snrt_ssr_loop_3d(SNRT_SSR_DM0, ssr0_b[1], ssr0_b[2], ssr0_b[3],
+                         ssr0_i[1], ssr0_i[2], ssr0_i[3]);
+
+        // fp8 -> fp32 (wrt fp8->fp16 kernel, it needs two fp8->fp32 instructions per fp8->fp16 instruction)
+        snrt_ssr_repeat(SNRT_SSR_DM0, unroll*2);
+        snrt_ssr_repeat(SNRT_SSR_DM1, 2);
+
+        snrt_ssr_loop_4d(SNRT_SSR_DM1, ssr1_b[0], ssr1_b[1], ssr1_b[2],
+                         ssr1_b[3], ssr1_i[0], ssr1_i[1], ssr1_i[2], ssr1_i[3]);
+    }
+
+    // SSR start address need to be configured each time
+    snrt_ssr_read(SNRT_SSR_DM0, SNRT_SSR_4D, A);
+    snrt_ssr_read(SNRT_SSR_DM1, SNRT_SSR_4D, B);
+    snrt_ssr_enable();
+
+    // Kernel progresses by 8 values each step
+    const uint32_t n_frep = K / 8 - 1;
+
+    for (uint32_t m = 0; m < M; m++) {
+        uint32_t n = 0;
+        for (uint32_t n0 = 0; n0 < N / unroll; n0++) {
+            char* _C = &C[m * ldC + n];
+            const register float zero = 0.0;
+            register v8f8 c[double_unroll];
+            register v4f16 reduce_reg[unroll];
+            uint32_t beta;
+
+            asm volatile(
+                "lw         %[beta], 0(%[BETA]) \n"
+                "beqz       %[beta], 1f \n"
+                "flb %[reduce_reg0], 0(%[C]) \n"
+                "flb %[reduce_reg1], 1(%[C]) \n"
+                "flb %[reduce_reg2], 2(%[C]) \n"
+                "flb %[reduce_reg3], 3(%[C]) \n"
+                "flb %[reduce_reg4], 4(%[C]) \n"
+                "flb %[reduce_reg5], 5(%[C]) \n"
+                "flb %[reduce_reg6], 6(%[C]) \n"
+                "flb %[reduce_reg7], 7(%[C]) \n"\
+                // Initialize reduce register to zero
+                "vfcpka.s.s %[c0], %[zero], %[zero]\n"
+                "vfcpka.s.s %[c1], %[zero], %[zero]\n"
+                "vfcpka.s.s %[c2], %[zero], %[zero]\n"
+                "vfcpka.s.s %[c3], %[zero], %[zero]\n"
+                "vfcpka.s.s %[c4], %[zero], %[zero]\n"
+                "vfcpka.s.s %[c5], %[zero], %[zero]\n"
+                "vfcpka.s.s %[c6], %[zero], %[zero]\n"
+                "vfcpka.s.s %[c7], %[zero], %[zero]\n"
+                "vfcpka.s.s %[c8], %[zero], %[zero]\n"
+                "vfcpka.s.s %[c9], %[zero], %[zero]\n"
+                "vfcpka.s.s %[c10], %[zero], %[zero]\n"
+                "vfcpka.s.s %[c11], %[zero], %[zero]\n"
+                "vfcpka.s.s %[c12], %[zero], %[zero]\n"
+                "vfcpka.s.s %[c13], %[zero], %[zero]\n"
+                "vfcpka.s.s %[c14], %[zero], %[zero]\n"
+                "vfcpka.s.s %[c15], %[zero], %[zero]\n"
+                // Convert intermediate results before packing
+                "vfcvt.s.b %[reduce_reg0], %[reduce_reg0]\n"
+                "vfcvt.s.b %[reduce_reg1], %[reduce_reg1]\n"
+                "vfcvt.s.b %[reduce_reg2], %[reduce_reg2]\n"
+                "vfcvt.s.b %[reduce_reg3], %[reduce_reg3]\n"
+                "vfcvt.s.b %[reduce_reg4], %[reduce_reg4]\n"
+                "vfcvt.s.b %[reduce_reg5], %[reduce_reg5]\n"
+                "vfcvt.s.b %[reduce_reg6], %[reduce_reg6]\n"
+                "vfcvt.s.b %[reduce_reg7], %[reduce_reg7]\n"
+                // Pack intermediate results into SIMD vector
+                "vfcpka.s.s %[c0], %[reduce_reg0], %[zero]\n"
+                "vfcpka.s.s %[c2], %[reduce_reg1], %[zero]\n"
+                "vfcpka.s.s %[c4], %[reduce_reg2], %[zero]\n"
+                "vfcpka.s.s %[c6], %[reduce_reg3], %[zero]\n"
+                "vfcpka.s.s %[c8], %[reduce_reg4], %[zero]\n"
+                "vfcpka.s.s %[c10], %[reduce_reg5], %[zero]\n"
+                "vfcpka.s.s %[c12], %[reduce_reg6], %[zero]\n"
+                "vfcpka.s.s %[c14], %[reduce_reg7], %[zero]\n"
+                "j 2f \n"
+                "1: \n"
+                // Initialize SIMD vector with zeros
+                "vfcpka.s.s %[c0], %[zero], %[zero]\n"
+                "vfcpka.s.s %[c1], %[zero], %[zero]\n"
+                "vfcpka.s.s %[c2], %[zero], %[zero]\n"
+                "vfcpka.s.s %[c3], %[zero], %[zero]\n"
+                "vfcpka.s.s %[c4], %[zero], %[zero]\n"
+                "vfcpka.s.s %[c5], %[zero], %[zero]\n"
+                "vfcpka.s.s %[c6], %[zero], %[zero]\n"
+                "vfcpka.s.s %[c7], %[zero], %[zero]\n"
+                "vfcpka.s.s %[c8], %[zero], %[zero]\n"
+                "vfcpka.s.s %[c9], %[zero], %[zero]\n"
+                "vfcpka.s.s %[c10], %[zero], %[zero]\n"
+                "vfcpka.s.s %[c11], %[zero], %[zero]\n"
+                "vfcpka.s.s %[c12], %[zero], %[zero]\n"
+                "vfcpka.s.s %[c13], %[zero], %[zero]\n"
+                "vfcpka.s.s %[c14], %[zero], %[zero]\n"
+                "vfcpka.s.s %[c15], %[zero], %[zero]\n"
+                "2: \n"
+                // Perform expanding sum-dotproducts
+                "frep.o  %[n_frep], 16, 0, 0 \n"
+                "vfdotpexa.s.b %[c0], ft1, ft0 \n"
+                "vfdotpexb.s.b %[c1], ft1, ft0 \n"
+                "vfdotpexa.s.b %[c2], ft1, ft0 \n"
+                "vfdotpexb.s.b %[c3], ft1, ft0 \n"
+                "vfdotpexa.s.b %[c4], ft1, ft0 \n"
+                "vfdotpexb.s.b %[c5], ft1, ft0 \n"
+                "vfdotpexa.s.b %[c6], ft1, ft0 \n"
+                "vfdotpexb.s.b %[c7], ft1, ft0 \n"
+                "vfdotpexa.s.b %[c8], ft1, ft0 \n"
+                "vfdotpexb.s.b %[c9], ft1, ft0 \n"
+                "vfdotpexa.s.b %[c10], ft1, ft0 \n"
+                "vfdotpexb.s.b %[c11], ft1, ft0 \n"
+                "vfdotpexa.s.b %[c12], ft1, ft0 \n"
+                "vfdotpexb.s.b %[c13], ft1, ft0 \n"
+                "vfdotpexa.s.b %[c14], ft1, ft0 \n"
+                "vfdotpexb.s.b %[c15], ft1, ft0 \n"
+                // Reduce double accumulator due to unbalanced wdotp8to32
+                "vfadd.s %[c0], %[c0], %[c1] \n"
+                "vfadd.s %[c1], %[c2], %[c3] \n"
+                "vfadd.s %[c2], %[c4], %[c5] \n"
+                "vfadd.s %[c3], %[c6], %[c7] \n"
+                "vfadd.s %[c4], %[c8], %[c9] \n"
+                "vfadd.s %[c5], %[c10], %[c11] \n"
+                "vfadd.s %[c6], %[c12], %[c13] \n"
+                "vfadd.s %[c7], %[c14], %[c15] \n"
+                // Initialize reduce register to zero
+                "vfcpka.s.s %[reduce_reg0], %[zero], %[zero]\n"
+                "vfcpka.s.s %[reduce_reg1], %[zero], %[zero]\n"
+                "vfcpka.s.s %[reduce_reg2], %[zero], %[zero]\n"
+                "vfcpka.s.s %[reduce_reg3], %[zero], %[zero]\n"
+                "vfcpka.s.s %[reduce_reg4], %[zero], %[zero]\n"
+                "vfcpka.s.s %[reduce_reg5], %[zero], %[zero]\n"
+                "vfcpka.s.s %[reduce_reg6], %[zero], %[zero]\n"
+                "vfcpka.s.s %[reduce_reg7], %[zero], %[zero]\n"
+                // Sum-reduce vector
+                "vfsum.s %[reduce_reg0], %[c0] \n"
+                "vfsum.s %[reduce_reg1], %[c1] \n"
+                "vfsum.s %[reduce_reg2], %[c2] \n"
+                "vfsum.s %[reduce_reg3], %[c3] \n"
+                "vfsum.s %[reduce_reg4], %[c4] \n"
+                "vfsum.s %[reduce_reg5], %[c5] \n"
+                "vfsum.s %[reduce_reg6], %[c6] \n"
+                "vfsum.s %[reduce_reg7], %[c7] \n"
+                // Pack and convert results to FP8 vectors
+                "vfcpka.b.s %[c0], %[reduce_reg0], %[reduce_reg1] \n"
+                "vfcpkb.b.s %[c0], %[reduce_reg2], %[reduce_reg3] \n"
+                "vfcpkc.b.s %[c0], %[reduce_reg4], %[reduce_reg5] \n"
+                "vfcpkd.b.s %[c0], %[reduce_reg6], %[reduce_reg7] \n"
+                : [ c0 ] "+f"(c[0]), [ c1 ] "+f"(c[1]), [ c2 ] "+f"(c[2]),
+                  [ c3 ] "+f"(c[3]), [ c4 ] "+f"(c[4]), [ c5 ] "+f"(c[5]),
+                  [ c6 ] "+f"(c[6]), [ c7 ] "+f"(c[7]),
+                  [ c8 ] "+f"(c[8]), [ c9 ] "+f"(c[9]), [ c10 ] "+f"(c[10]),
+                  [ c11 ] "+f"(c[11]), [ c12 ] "+f"(c[12]), [ c13 ] "+f"(c[13]),
+                  [ c14 ] "+f"(c[14]), [ c15 ] "+f"(c[15]), [ beta ] "=r"(beta),
+                  [ reduce_reg0 ] "+f"(reduce_reg[0]),
+                  [ reduce_reg1 ] "+f"(reduce_reg[1]),
+                  [ reduce_reg2 ] "+f"(reduce_reg[2]),
+                  [ reduce_reg3 ] "+f"(reduce_reg[3]),
+                  [ reduce_reg4 ] "+f"(reduce_reg[4]),
+                  [ reduce_reg5 ] "+f"(reduce_reg[5]),
+                  [ reduce_reg6 ] "+f"(reduce_reg[6]),
+                  [ reduce_reg7 ] "+f"(reduce_reg[7])
+                : [ C ] "r"(_C), [ n_frep ] "r"(n_frep), [ BETA ] "r"(BETA),
+                  [ zero ] "f"(zero)
+                : "ft0", "ft1", "ft2");
+
+            // Store results back
+            ((v8f8*)_C)[0] = c[0];
+            n += unroll;
+        }
+    }
+
+    snrt_ssr_disable();
+}
+
 // BLAS compliant GEMM kernel, with some additional arguments at the beginning
 // to specify Snitch implementation details. Matrix sizes and pointers are for
 // the whole cluster computation
 // TODO: beta (and alpha) should be of floating-point type (same precision as
 // operands)
-void gemm(precision_t prec, uint32_t expand, uint32_t setup_ssr,
+void gemm(precision_t prec, uint32_t expand, uint32_t expand_to_fp32, uint32_t setup_ssr,
           uint32_t transa, uint32_t transb, uint32_t m, uint32_t n, uint32_t k,
           double alpha, void* a, uint32_t lda, void* b, uint32_t ldb,
           uint32_t beta, void* c, uint32_t ldc) {
@@ -918,7 +1111,7 @@ void gemm(precision_t prec, uint32_t expand, uint32_t setup_ssr,
                           &beta, setup_ssr);
             break;
         case FP16:
-            if (expand) {
+            if (expand || expand_to_fp32) {
                 gemm_fp16_ex_opt(
                     frac_m, n, k, (__fp16*)a + offsetA, lda_strided, (__fp16*)b,
                     ldb, (__fp16*)c + offsetC, ldc_strided, &beta, setup_ssr);
@@ -929,9 +1122,15 @@ void gemm(precision_t prec, uint32_t expand, uint32_t setup_ssr,
             }
             break;
         case FP8:
-            gemm_fp8_ex_opt(frac_m, n, k, (char*)a + offsetA, lda_strided,
-                            (char*)b, ldb, (char*)c + offsetC, ldc_strided,
-                            &beta, setup_ssr);
+            if (expand_to_fp32) {
+                gemm_fp8_ex32_opt(frac_m, n, k, (char*)a + offsetA, lda_strided,
+                                  (char*)b, ldb, (char*)c + offsetC, ldc_strided,
+                                  &beta, setup_ssr);
+            } else if (expand) {
+                gemm_fp8_ex_opt(frac_m, n, k, (char*)a + offsetA, lda_strided,
+                                (char*)b, ldb, (char*)c + offsetC, ldc_strided,
+                                &beta, setup_ssr);
+            }
             break;
     }
 }
