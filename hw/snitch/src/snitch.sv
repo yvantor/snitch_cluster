@@ -498,6 +498,8 @@ module snitch import snitch_pkg::*; import riscv_instr::*; #(
   // --------------------
   // Decoder
   // --------------------
+  logic overflow_conditioned;
+
   assign rd = inst_data_i[7 + RegWidth - 1:7];
   assign rs1 = inst_data_i[15 + RegWidth - 1:15];
   assign rs2 = inst_data_i[20 + RegWidth - 1:20];
@@ -535,6 +537,8 @@ module snitch import snitch_pkg::*; import riscv_instr::*; #(
     acc_qvalid_o = 1'b0;
     acc_qreq_o.addr = FP_SS;
     acc_register_rd = 1'b0;
+
+    overflow_conditioned = 1'b0;
 
     debug_d = (!debug_q && (
           // the external debugger or an ebreak instruction triggerd the
@@ -680,6 +684,22 @@ module snitch import snitch_pkg::*; import riscv_instr::*; #(
         is_branch = 1'b1;
         write_rd = 1'b0;
         alu_op = Neq;
+        opa_select = Reg;
+        opb_select = Reg;
+      end
+      BEQOV: begin
+        is_branch = 1'b1;
+        write_rd = 1'b0;
+        alu_op = Eq;
+        overflow_conditioned = 1'b1;
+        opa_select = Reg;
+        opb_select = Reg;
+      end
+      BNEOV: begin
+        is_branch = 1'b1;
+        write_rd = 1'b0;
+        alu_op = Neq;
+        overflow_conditioned = 1'b1;
         opa_select = Reg;
         opb_select = Reg;
       end
@@ -2739,11 +2759,11 @@ module snitch import snitch_pkg::*; import riscv_instr::*; #(
       LOr: alu_result = opa | opb;
       Eq: begin
         alu_opb = -$signed(opb);
-        alu_result = ~|adder_result;
+        alu_result = (overflow_conditioned) ?  (~fcsr_q.fflags[2] & (~|adder_result)) : (~|adder_result);
       end
       Neq: begin
         alu_opb = -$signed(opb);
-        alu_result = |adder_result;
+        alu_result = (overflow_conditioned) ?  (~fcsr_q.fflags[2] & (|adder_result)) : (|adder_result);
       end
       BypassA: begin
         alu_result = opa;
@@ -2931,6 +2951,8 @@ module snitch import snitch_pkg::*; import riscv_instr::*; #(
     JALR,
     BEQ,
     BNE,
+    BEQOV,
+    BNEOV,
     BLT,
     BLTU,
     BGE,
