@@ -276,6 +276,7 @@ module snitch_fp_ss import snitch_pkg::*; #(
       is_rd_ssr |= (SsrRegs[s] == rd);
   end
 
+  logic select_upper_half;
   always_comb begin
     acc_resp_o.error = 1'b0;
     fpu_op = fpnew_pkg::ADD;
@@ -306,6 +307,7 @@ module snitch_fp_ss import snitch_pkg::*; #(
     is_store = 1'b0;
     is_load = 1'b0;
     ls_size = Word;
+    select_upper_half = 1'b0;
 
     // Destination register is in FPR
     rd_is_fp = 1'b1;
@@ -1059,6 +1061,31 @@ module snitch_fp_ss import snitch_pkg::*; #(
         vectorial_op = 1'b1;
         set_dyn_rm   = 1'b1;
         if (acc_req_q.data_op inside {riscv_instr::VFDOTPEX_S_R_H}) op_select[2] = RegBRep;
+      end
+      riscv_instr::VFDOTPEXA_S_B,
+      riscv_instr::VFDOTPEXA_S_R_B: begin
+        fpu_op = fpnew_pkg::SDOTP;
+        op_select[0] = RegA;
+        op_select[1] = RegB;
+        op_select[2] = RegDest;
+        src_fmt      = fpnew_pkg::FP8;
+        dst_fmt      = fpnew_pkg::FP32;
+        vectorial_op = 1'b1;
+        set_dyn_rm   = 1'b1;
+        if (acc_req_q.data_op inside {riscv_instr::VFDOTPEXA_S_R_B}) op_select[2] = RegBRep;
+      end
+      riscv_instr::VFDOTPEXB_S_B,
+      riscv_instr::VFDOTPEXB_S_R_B: begin
+        select_upper_half = 1'b1;
+        fpu_op = fpnew_pkg::SDOTP;
+        op_select[0] = RegA;
+        op_select[1] = RegB;
+        op_select[2] = RegDest;
+        src_fmt      = fpnew_pkg::FP8;
+        dst_fmt      = fpnew_pkg::FP32;
+        vectorial_op = 1'b1;
+        set_dyn_rm   = 1'b1;
+        if (acc_req_q.data_op inside {riscv_instr::VFDOTPEXB_S_R_B}) op_select[2] = RegBRep;
       end
       riscv_instr::VFNDOTPEX_S_H,
       riscv_instr::VFNDOTPEX_S_R_H: begin
@@ -2482,6 +2509,12 @@ module snitch_fp_ss import snitch_pkg::*; #(
               fpnew_pkg::FP8ALT:  op[i] = {(FLEN /  8){op[i][ 7:0]}};
               default:            op[i] = op[i][FLEN-1:0];
             endcase
+          end
+          // Select upper half if needed - only required by VFDOTPEXB_S_B, VFDOTPEXB_S_R_B
+          if (i != 2) begin
+            if (select_upper_half) begin
+              op[i] = {{(FLEN/2){1'b1}}, op[i][FLEN-1:FLEN/2]};
+            end
           end
         end
         default: begin
