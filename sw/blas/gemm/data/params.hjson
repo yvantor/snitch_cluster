@@ -5,13 +5,14 @@
 // Parameters for a GEMM
 
 {
-    M: 192,
-    N: 16,
-    K: 16,
+    M: 128,
+    N: 128,
+    K: 128,
     beta: 0,
     ta: false,
     tb: true, // must be true for SIMD
-    prec: 64,
+    prec: 8,
     expand: 0,
-    expand_to_fp32: 0
+    expand_to_fp32: 0,
+    overflow_recovery: 1
 }

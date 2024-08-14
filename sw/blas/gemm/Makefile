@@ -19,8 +19,8 @@ INCDIRS ?= $(DATA_DIR) $(SRC_DIR)
 DATAGEN_PY = $(DATA_DIR)/datagen.py
 DATA_H     = $(DATA_DIR)/data.h
 
-$(DATA_H): $(DATAGEN_PY) $(DATA_CFG)
-	$< -c $(DATA_CFG) --section="$(SECTION)" > $@
+# $(DATA_H): $(DATAGEN_PY) $(DATA_CFG)
+# 	$< -c $(DATA_CFG) --section="$(SECTION)" > $@
 
 .PHONY: clean-data clean
 
