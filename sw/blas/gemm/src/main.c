@@ -15,7 +15,7 @@
 #include "snrt.h"
 
 int main() {
-    void *local_a, *local_b, *local_c;
+    void *local_a, *local_b, *local_c, *local_d;
     void *remote_a, *remote_b, *remote_c;
 
     // Calculate size and pointers for each cluster
@@ -24,9 +24,11 @@ int main() {
     uint32_t frac_c = frac_m * N;
     uint32_t size_frac_a = frac_a * dtype_size;
     uint32_t size_b = K * N * dtype_size;
+    uint32_t size_c = M * N * dtype_size;
     uint32_t size_frac_c = frac_c * dtype_size;
     uint32_t offset_a = frac_a * snrt_cluster_idx();
     uint32_t offset_c = frac_c * snrt_cluster_idx();
+    uint32_t *overflow_final;
     remote_a = a + offset_a;
     remote_b = b;
     remote_c = c + offset_c;
@@ -35,12 +37,15 @@ int main() {
     local_a = (void *)snrt_l1_next();
     local_b = local_a + size_frac_a;
     local_c = local_b + size_b;
+    local_d = local_c + size_c;
+    overflow_final = local_c + 2*size_c;
 
     // Copy data in TCDM
     if (snrt_is_dm_core()) {
         snrt_dma_start_1d(local_a, remote_a, size_frac_a);
         snrt_dma_start_1d(local_b, remote_b, size_b);
         snrt_dma_start_1d(local_c, remote_c, size_frac_c);
+        *overflow_final = 0;
         snrt_dma_wait_all();
     }
 
@@ -63,8 +68,8 @@ int main() {
             ldb = N;
         }
 
-        gemm(dtype_size, expand, expand_to_fp32, setup_ssr, TA, TB, frac_m, N, K, 1, local_a,
-             lda, local_b, ldb, BETA, local_c, ldc);
+        gemm(dtype_size, expand, expand_to_fp32, overflow_recovery, setup_ssr, TA, TB, frac_m, N, K, 1, local_a,
+             lda, local_b, ldb, BETA, local_c, ldc, overflow_final, local_d);
 
         uint32_t end_cycle = snrt_mcycle();
     }
@@ -104,7 +109,7 @@ int main() {
                             fabs(result[idx] * 0.005))
                             errors--;
                     case FP8:
-                        printf("No golden model yet for fp8!\n");
+                        printf("Automated golden model not yet available for fp8!\n");
                         return -1;
                         break;
                 }
