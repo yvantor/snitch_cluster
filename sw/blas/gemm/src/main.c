@@ -108,6 +108,7 @@ int main() {
                         if (fabs(result[idx] - ((__fp16 *)local_c)[idx]) <
                             fabs(result[idx] * 0.005))
                             errors--;
+                        break;
                     case FP8:
                         printf("Automated golden model not yet available for fp8!\n");
                         return -1;
