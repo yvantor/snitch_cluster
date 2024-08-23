@@ -78,8 +78,6 @@ class GemmDataGen(DataGen):
             'N dimension of tile size must be greater or equal to the unrolling factor (8) ' \
             'when using optimized kernels'
         assert beta == 0 or beta == 1, 'Only values of 0 or 1 supported for beta'
-        assert not (dtype == 8 and impl == "baseline"), 'No baseline implemented' \
-            ' for FP64 (switch to NAIVE)'
         assert not (((dtype == 8) or (dtype == 4)) and impl == "opt_ex"), \
             'Expanding GEMM kernels' \
             ' not supported for FP64 and FP32'
