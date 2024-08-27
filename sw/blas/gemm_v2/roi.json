@@ -1,6 +1,6 @@
 [
     <% DOUBLE_BUFFER = 1 %>
-    <% N_TILES = 2 %>
+    <% N_TILES = 8 %>
 
     // Compute cores
     % for j in range(0, 8):

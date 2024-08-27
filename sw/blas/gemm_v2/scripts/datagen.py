@@ -46,11 +46,11 @@ class GemmDataGen(DataGen):
         return (int(prec) / 8), impl
 
     def validate_config(self, gemm_fp,
-                        m_tiles, transa,
+                        m_tiles, k_tiles, transa,
                         transb, M, N, K, beta, **kwargs):
         frac_m = M / m_tiles
         frac_n = N / 1
-        frac_k = K / 1
+        frac_k = K / k_tiles
 
         dtype, impl = self.infer_implementation(gemm_fp)
 
@@ -66,7 +66,7 @@ class GemmDataGen(DataGen):
 
         assert (M % m_tiles) == 0, 'M is not an integer multiple of tile size'
         assert (N % 1) == 0, 'N is not an integer multiple of tile size'
-        assert (K % 1) == 0, 'K is not an integer multiple of tile size'
+        assert (K % k_tiles) == 0, 'K is not an integer multiple of tile size'
         assert not transa, 'SIMD kernels don\'t support transposed A matrix'
         assert (dtype == 8) or (impl == 'baseline') or (impl == 'naive') \
             or transb, 'Optimized SIMD kernels only support transposed B matrix'
