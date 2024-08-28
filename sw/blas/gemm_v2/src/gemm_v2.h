@@ -186,6 +186,13 @@ int gemm(gemm_args_t* args) {
     int buff_idx, c_buff_idx, c_move;
     int i, i_m, i_k, i_dma_out, i_dma_in, i_compute;
 
+    // Set C buffers to zero
+    if (snrt_is_dm_core()) {
+        snrt_dma_start_1d(local_c[0], snrt_zero_memory_ptr(), size_frac_c);
+        snrt_dma_start_1d(local_c[1], snrt_zero_memory_ptr(), size_frac_c);
+    }
+    snrt_cluster_hw_barrier();
+
     // Iterate over all tiles
     for (i = 0; i < iterations; i++) {
         if (snrt_is_dm_core()) {
@@ -203,11 +210,9 @@ int gemm(gemm_args_t* args) {
                 c_move = i_k == (k_tiles - 1);
 
                 // Copy job outputs from TCDM
-                if (c_move) {
-                    snrt_dma_store_2d_tile(c, local_c[c_buff_idx], i_m, 0,
-                                           frac_m, frac_n, n, prec);
-                    snrt_dma_wait_all();
-                }
+                snrt_dma_store_2d_tile(c, local_c[c_buff_idx], i_m, 0,
+                                       frac_m / 8, frac_n, n, prec);
+                snrt_dma_wait_all();
 
                 snrt_mcycle();
             }
@@ -231,11 +236,9 @@ int gemm(gemm_args_t* args) {
                 snrt_dma_load_2d_tile(local_b[buff_idx], b, 0,
                                       i_k, frac_n, frac_k, k,
                                       prec);
-                if (c_move) {
-                    snrt_dma_load_2d_tile(local_c[c_buff_idx], c, i_m,
-                                          0, frac_m, frac_n, n,
-                                          prec);
-                }
+                snrt_dma_load_2d_tile(local_c[c_buff_idx], c, i_m,
+                                      0, frac_m / 8, frac_n, n,
+                                      prec);
                 snrt_dma_wait_all();
 
                 snrt_mcycle();
