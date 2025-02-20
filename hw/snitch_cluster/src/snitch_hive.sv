@@ -53,7 +53,7 @@ module snitch_hive #(
 
   input sram_cfgs_t sram_cfgs_i,
 
-  output snitch_icache_pkg::icache_events_t [CoreCount-1:0] icache_events_o
+  output snitch_icache_pkg::icache_l0_events_t [CoreCount-1:0] icache_events_o
 );
   // Extend the ID to route back results to the appropriate core.
   localparam int unsigned IdWidth = 5;
@@ -107,7 +107,8 @@ module snitch_hive #(
     .clk_d2_i (clk_d2_i),
     .rst_ni (rst_ni),
     .enable_prefetching_i ( icache_prefetch_enable_i ),
-    .icache_events_o  ( icache_events_o),
+    .icache_l0_events_o ( icache_events_o  ),
+    .icache_l1_events_o ( /* Unconnected*/ ),
     .flush_valid_i    ( flush_valid    ),
     .flush_ready_o    ( flush_ready    ),
 
