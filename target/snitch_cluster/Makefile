@@ -95,6 +95,10 @@ VLT_CC_SOURCES += \
 	${TB_DIR}/tb_bin.cc
 
 TB_CC_FLAGS += \
+        -O3 \
+	-march=native \
+	-DNDEBUG \
+	-g0 \
 	-std=c++14 \
 	-I${MKFILE_DIR}/test \
 	-I${FESVR}/include \

@@ -55,7 +55,7 @@ endif
 VSIM_BENDER   += $(COMMON_BENDER_FLAGS) -t test -t simulation -t vsim
 VSIM_BUILDDIR ?= work-vsim
 VSIM_FLAGS    += -t 1ps
-VOPT_FLAGS     = 
+VOPT_FLAGS     = -O5
 ifeq ($(DEBUG), ON)
 VSIM_FLAGS    += -do "log -r /*"
 VOPT_FLAGS    += +acc

@@ -5,8 +5,12 @@
 
 # Define environment variables
 export BENDER=bender-0.28.1
+export PATH="/usr/local/bin/ccache:$PATH"   # ensure ccache is first
 export CC=gcc-9.2.0
 export CXX=g++-9.2.0
+export CCACHE_CC="gcc-9.2.0"
+export CCACHE_CXX="g++-9.2.0"
+export CCACHE_MAXSIZE="5G"
 export VCS_SEPP=vcs-2024.09
 export VERILATOR_SEPP=oseda
 export QUESTA_SEPP=questa-2023.4

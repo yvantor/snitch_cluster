@@ -23,6 +23,11 @@ $(BIN_DIR)/$(TARGET)_bin.vlt: $(TB_CC_SOURCES) $(VLT_CC_SOURCES) $(VLT_BUILDDIR)
 	$(VLT) $(shell $(BENDER) script verilator $(VLT_BENDER)) \
 		$(VLT_FLAGS) --Mdir $(VLT_BUILDDIR) \
 		-CFLAGS -std=c++20 \
+                -CFLAGS -std=c++20 \
+                -CFLAGS -O3 \
+                -CFLAGS -march=native \
+                -CFLAGS -DNDEBUG \
+                -CFLAGS -g0 \
 		-CFLAGS -I$(VLT_FESVR)/include \
 		-CFLAGS -I$(TB_DIR) \
 		-CFLAGS -I$(MKFILE_DIR)test \
