@@ -144,7 +144,7 @@ include $(ROOT)/target/snitch_cluster/sw.mk
 # RTL #
 #######
 
-GENERATED_RTL_SOURCES  = $(PERIPH_DIR)/snitch_cluster_peripheral_reg_top.sv
+GENERATED_RTL_SOURCES  = $(PERIPH_DIR)/snitch_cluster_peripheral_reg.sv
 GENERATED_RTL_SOURCES += $(PERIPH_DIR)/snitch_cluster_peripheral_reg_pkg.sv
 GENERATED_RTL_SOURCES += $(GENERATED_DIR)/snitch_cluster_wrapper.sv
 GENERATED_RTL_SOURCES += $(GENERATED_DIR)/snitch_cluster_pkg.sv
