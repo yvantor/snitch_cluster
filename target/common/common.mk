@@ -186,7 +186,7 @@ $(VLT_BUILDDIR)/lib/libfesvr.a: $(VLT_FESVR)/${FESVR_VERSION}_unzip
 # $1: target name, $2: prerequisite (hjson description file)
 define peakrdl_generate_header
 	@echo "[peakRDL] Generating $1"
-	peakrdl c-header $2 -o $1
+	peakrdl c-header -b htol $2 -o $1
 	@$(CLANG_FORMAT) -i $1
 endef
 
