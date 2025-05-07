@@ -69,6 +69,8 @@ APPS += sw/apps/correlation
 APPS += sw/apps/covariance
 APPS += sw/apps/doitgen
 APPS += sw/apps/kmeans
+APPS += sw/apps/tutorial
+APPS += sw/apps/redmule
 
 # Include Makefile from each app subdirectory
 $(foreach app,$(APPS), \
