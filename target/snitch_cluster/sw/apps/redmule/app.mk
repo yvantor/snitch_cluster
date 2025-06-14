@@ -8,5 +8,6 @@ APP              := redmule
 $(APP)_BUILD_DIR := $(SN_ROOT)/target/snitch_cluster/sw/apps/$(APP)/build
 SRCS             := $(SN_ROOT)/target/snitch_cluster/sw/apps/$(APP)/src/$(APP).c
 $(APP)_INCDIRS   := $(SN_ROOT)/target/snitch_cluster/sw/apps/$(APP)/data
+$(APP)_INCDIRS   += $(SN_ROOT)/target/snitch_cluster/sw/apps/$(APP)/inc
 
 include $(SN_ROOT)/target/snitch_cluster/sw/apps/common.mk

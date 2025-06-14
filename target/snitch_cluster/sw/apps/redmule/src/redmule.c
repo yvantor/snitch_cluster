@@ -5,7 +5,14 @@
 #include <stdint.h>
 
 #include "snrt.h"
-#include "data.h"
+/* #include "data.h" */
+#include "redmule_archi.h"
+#include "redmule_hal.h"
+#include "tensor_dim.h"
+#include "x_input.h"
+#include "y_input.h"
+#include "w_input.h"
+#include "golden.h"
 
 #define VERBOSE
 
