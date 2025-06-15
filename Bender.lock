@@ -63,7 +63,7 @@ packages:
       Git: https://github.com/pulp-platform/common_verification.git
     dependencies: []
   cv32e40p:
-    revision: 800a09d97a1e9418e127e8bbf1763c1d1097c92f
+    revision: 1a93f340e9dadb9f7c8c471f27a40932c8b1c62e
     version: null
     source:
       Git: https://github.com/pulp-platform/cv32e40p.git
@@ -158,7 +158,7 @@ packages:
     - common_cells
     - common_verification
   redmule:
-    revision: 083f6aef62dafc5e5c546138bb6448597903a283
+    revision: 1e1706de7bd2e9375001debdd2944f72ea2fdf6e
     version: null
     source:
       Git: https://github.com/pulp-platform/redmule
